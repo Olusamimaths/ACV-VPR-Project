@@ -170,7 +170,7 @@ def main():
     # recall at K
     RatK = {}
     for K in [1, 5, 10]:
-        RatK[K] = recallAtK(S, GThard, GTsoft, K=K)
+        RatK[K] = recallAtK(S, GThard, K=K)
 
     print(f'\n===== recall@K (R@K) -- R@1: {RatK[1]:.3f}, R@5: {RatK[5]:.3f}, R@10: {RatK[10]:.3f}')
 
