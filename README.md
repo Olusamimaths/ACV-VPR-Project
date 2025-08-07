@@ -35,18 +35,19 @@ python3 demo.py
 ```
 The GardensPoints Walking dataset will be downloaded automatically. You should get an output similar to this:
 ```
-python3 demo.py
+python demo.py
+========== Start VPR with HDC-DELF descriptor on dataset GardensPoint
 ===== Load dataset
 ===== Load dataset GardensPoint day_right--night_right
-===== Compute local DELF descriptors
-===== Compute holistic HDC-DELF descriptors
+===== Compute reference set descriptors
+===== Compute query set descriptors
 ===== Compute cosine similarities S
 ===== Match images
 ===== Evaluation
 
-===== AUC (area under curve): 0.74
+===== AUC (area under curve): 0.742
 ===== R@100P (maximum recall at 100% precision): 0.36
-===== recall@K (R@K) -- R@1: 0.85 , R@5: 0.925 , R@10: 0.945
+===== recall@K (R@K) -- R@1: 0.420, R@5: 0.870, R@10: 0.925
 ```
 
 | Precision-recall curve | Matchings M | Examples for a true positive and a false positive |
