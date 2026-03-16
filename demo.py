@@ -108,7 +108,7 @@ def main():
     else:
         print('=== WARNING: The PatchNetVLAD code in this repository is not optimised and will be slow and memory consuming.')
         print('===== Compute reference set descriptors')
-        db_D_holistic, db_D_patches = feature_extractor.compute_features(imgs_db)
+        db_D_holigstic, db_D_patches = feature_extractor.compute_features(imgs_db)
         print('===== Compute query set descriptors')
         q_D_holistic, q_D_patches = feature_extractor.compute_features(imgs_q)
         # S_hol = np.matmul(db_D_holistic , q_D_holistic.transpose())
