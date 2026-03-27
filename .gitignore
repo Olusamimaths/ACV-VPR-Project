@@ -1,5 +1,6 @@
 # Ignore datasets
 images/
+custom_dataset/
 
 # Ignore Mac DS_Store files
 .DS_Store
