@@ -24,6 +24,7 @@ import numpy as np
 from scipy.signal import convolve2d
 from typing import List, Tuple
 from abc import ABC, abstractmethod
+import re
 
 
 class Dataset(ABC):
@@ -172,3 +173,117 @@ class SFUDataset(Dataset):
 
         # remove zipfile
         os.remove(destination + fn)
+
+class CampusDataset(Dataset):
+    """
+    Loader for custom campus dataset with day/night images.
+
+    Dataset structure:
+    - custom_dataset/day_images/: Reference database (day images)
+    - custom_dataset/night_images/: Query images (night images)
+
+    Naming convention:
+    - Matching pairs: image042.jpg (night) matches image042.jpg (day)
+    - No perfect match: image043-npm.jpg (night) has no match in day set
+    - Additional no-match files: npm01.jpg, npm02.jpg, PXL_*.jpg
+    """
+
+    def __init__(self, destination: str = 'custom_dataset/'):
+        self.destination = destination
+        self.day_dir = os.path.join(destination, 'day_images')
+        self.night_dir = os.path.join(destination, 'night_images')
+
+    def load(self) -> Tuple[List[np.ndarray], List[np.ndarray], np.ndarray, np.ndarray]:
+        """
+        Load campus dataset images and generate ground truth.
+
+        Returns:
+            imgs_db: List of database (day) images as numpy arrays
+            imgs_q: List of query (night) images as numpy arrays
+            GThard: Binary ground truth matrix [N_db x N_q]
+            GTsoft: Dilated ground truth matrix [N_db x N_q]
+        """
+        print('===== Load custom campus dataset: day_images --> night_images')
+
+        if not os.path.exists(self.day_dir):
+            raise FileNotFoundError(f"Day images directory not found: {self.day_dir}")
+        if not os.path.exists(self.night_dir):
+            raise FileNotFoundError(f"Night images directory not found: {self.night_dir}")
+
+        # Load day images (database/reference)
+        fns_db = sorted(glob(os.path.join(self.day_dir, '*.jpg')))
+        imgs_db = [np.array(Image.open(fn)) for fn in fns_db]
+
+        # Extract day image numbers for matching
+        day_names = [os.path.splitext(os.path.basename(fn))[0] for fn in fns_db]
+        print(f"  Loaded {len(imgs_db)} day images (database)")
+
+        # Load night images (queries)
+        fns_q = sorted(glob(os.path.join(self.night_dir, '*.jpg')))
+        imgs_q = [np.array(Image.open(fn)) for fn in fns_q]
+
+        # Extract night image numbers for matching
+        night_names = [os.path.splitext(os.path.basename(fn))[0] for fn in fns_q]
+        print(f"  Loaded {len(imgs_q)} night images (queries)")
+
+        # Create ground truth matrix
+        GThard = self._create_ground_truth(day_names, night_names)
+
+        # Create soft ground truth (dilated version - allows nearby matches)
+        # Dilate by ±2 positions in the database
+        GTsoft = convolve2d(GThard.astype('int'),
+                           np.ones((5, 1), 'int'), mode='same').astype('bool')
+
+        # Print matching statistics
+        n_matches = np.sum(GThard.any(axis=0))
+        n_no_match = len(imgs_q) - n_matches
+        print(f"  Ground truth: {n_matches} queries have matches, {n_no_match} have no match (-npm)")
+
+        return imgs_db, imgs_q, GThard, GTsoft
+
+    def _create_ground_truth(self, day_names: List[str], night_names: List[str]) -> np.ndarray:
+        """
+        Create ground truth matrix based on filename matching.
+
+        Matching rules:
+        - image042.jpg (night) matches image042.jpg (day)
+        - image043-npm.jpg (night) has no match
+        - npm01.jpg, PXL_*.jpg have no match
+
+        Args:
+            day_names: List of day image names (without extension)
+            night_names: List of night image names (without extension)
+
+        Returns:
+            GThard: Binary matrix [N_db x N_q] where GThard[i,j]=1 means
+                   day image i matches night image j
+        """
+        N_db = len(day_names)
+        N_q = len(night_names)
+        GThard = np.zeros((N_db, N_q), dtype=bool)
+
+        for j, night_name in enumerate(night_names):
+            # Skip images marked as no-perfect-match
+            if '-npm' in night_name.lower() or night_name.startswith('npm'):
+                continue
+
+            # Skip Pixel phone images (no corresponding day images)
+            if night_name.startswith('PXL_'):
+                continue
+
+            # Extract base image number (e.g., "image042" from "image042.jpg")
+            # This handles cases like "image012 (2).jpg" as well
+            match = re.match(r'(image\d+)', night_name)
+            if match:
+                base_name = match.group(1)
+
+                # Find matching day image
+                if base_name in day_names:
+                    i = day_names.index(base_name)
+                    GThard[i, j] = True
+
+        return GThard
+
+    def download(self, destination: str):
+        """CampusDataset is already local, no download needed."""
+        raise NotImplementedError("CampusDataset should already exist locally in custom_dataset/")

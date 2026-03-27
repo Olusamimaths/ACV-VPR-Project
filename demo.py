@@ -33,6 +33,9 @@ def main():
     parser = argparse.ArgumentParser(description='Visual Place Recognition: A Tutorial. Code repository supplementing our paper.')
     parser.add_argument('--descriptor', type=str, default='HDC-DELF', choices=['HDC-DELF', 'AlexNet', 'NetVLAD', 'PatchNetVLAD', 'CosPlace', 'EigenPlaces', 'SAD'], help='Select descriptor (default: HDC-DELF)')
     parser.add_argument('--dataset', type=str, default='GardensPoint', choices=['GardensPoint', 'StLucia', 'SFU'], help='Select dataset (default: GardensPoint)')
+    parser.add_argument('--n_correct', type=int, default=1, help='Number of correct matches to display (default: 1)')
+    parser.add_argument('--n_wrong', type=int, default=1, help='Number of wrong matches to display (default: 1)')
+    parser.add_argument('--save_results', action='store_true', help='Save visualization results to output_images/')
     args = parser.parse_args()
 
     print('========== Start VPR with {} descriptor on dataset {}'.format(args.descriptor, args.dataset))
@@ -134,8 +137,13 @@ def main():
     # evaluation
     print('===== Evaluation')
     # show correct and wrong image matches
+    save_matches_path = f'output_images/{args.dataset}_matches_examples.png' if args.save_results else None
     show_correct_and_wrong_matches.show(
-        imgs_db, imgs_q, TP, FP)  # show random matches
+        imgs_db, imgs_q, TP, FP,
+        n_correct=args.n_correct,
+        n_wrong=args.n_wrong,
+        save_path=save_matches_path
+    )
 
     # show M's
     fig = plt.figure()
