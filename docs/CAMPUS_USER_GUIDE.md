@@ -28,6 +28,30 @@ custom_dataset/
 python test_campus_dataset.py --descriptor CosPlace --save_results
 ```
 
+### Build A Live Reference Map
+```bash
+python live_vpr_test.py \
+  --mode build_live_map \
+  --map_path artifacts/live_maps/campus_day_live.npz \
+  --source 0 \
+  --descriptor CosPlace \
+  --recording_path artifacts/reference_videos/campus_day_walk.mp4 \
+  --capture_dir artifacts/reference_captures/campus_day_live \
+  --sample_fps 1.0
+```
+
+This lets you move around with a webcam or phone webcam, record a traversal video, and then build the map from sampled video frames after you stop recording.
+
+The recorder opens paused by default. Press `r` to start or pause recording, and press `q` when you want to stop and build the map.
+
+### Bash Launcher
+```bash
+bash scripts/live_vpr_cli.sh record-map
+bash scripts/live_vpr_cli.sh live --mirror
+```
+
+The launcher script wraps the common project workflows. See `docs/LIVE_VPR_SCRIPT.md` for details.
+
 ### Command Options
 ```bash
 --descriptor    # Feature extractor: CosPlace, EigenPlaces, HDC-DELF, AlexNet, NetVLAD
@@ -98,5 +122,8 @@ Day-to-night matching is inherently challenging due to lighting changes. Try dif
 - `test_campus_dataset.py` - Main test script for campus dataset
 - `demo.py` - Original VPR tutorial demo
 - `live_vpr_test.py` - Real-time VPR with camera
+- `docs/LIVE_VPR_PIPELINE.md` - Modular offline/online live-testing architecture and usage guide
+- `docs/LIVE_VPR_SCRIPT.md` - Bash launcher usage and configuration
+- `docs/LIVE_VPR_COMMANDS.md` - Command cookbook for both bash launcher and raw Python usage
 - `datasets/load_dataset.py` - Dataset loaders (includes CampusDataset)
 - `evaluation/show_correct_and_wrong_matches.py` - Match visualization

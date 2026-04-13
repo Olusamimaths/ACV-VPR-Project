@@ -1,712 +1,736 @@
 #!/usr/bin/env python3
 """
-Live VPR Testing Script for CMU-Africa Campus Dataset
-Authors: Rhoda Ojetola, Peter Adeyemo, Samuel Olusola
-Date: March 2026
+Live VPR pipeline for offline map building and online localization.
 
-This script enables real-time Visual Place Recognition testing using
-a phone camera connected to a Mac laptop.
-
-Usage:
-    # Step 1: Build reference database from day images
-    python live_vpr_test.py --mode build_db --data_dir data/CMUAfrica/day --db_path day_database.npz
-
-    # Step 2a: Run live test with camera
-    python live_vpr_test.py --mode live_test --db_path day_database.npz --camera 0
-
-    # Step 2b: Or test with recorded video
-    python live_vpr_test.py --mode video_test --db_path day_database.npz --video path/to/video.mp4
-
-    # Step 3: Batch evaluation (offline testing)
-    python live_vpr_test.py --mode batch_eval --db_path day_database.npz --query_dir data/CMUAfrica/night
-
-Controls (during live/video test):
-    q - Quit
-    s - Save current frame
-    t - Toggle showing top-3 matches
-    +/- - Adjust threshold
+Supported simulations:
+- Laptop webcam: `--source 0`
+- Phone as virtual webcam: `--source 1` or another camera index
+- Phone IP stream: `--source http://<phone-ip>:<port>/video`
+- Recorded video: `--video path/to/video.mp4`
 """
 
+from __future__ import annotations
+
 import argparse
-import cv2
-import numpy as np
-import os
-import sys
 from pathlib import Path
 import time
-import json
-from datetime import datetime
 
-# Add project root to path
-PROJECT_ROOT = Path(__file__).parent
-sys.path.insert(0, str(PROJECT_ROOT))
-
-
-class FeatureExtractorWrapper:
-    """Wrapper to handle different feature extractors uniformly."""
-
-    def __init__(self, descriptor_name='CosPlace'):
-        self.descriptor_name = descriptor_name
-        self.extractor = None
-        self._load_extractor()
-
-    def _load_extractor(self):
-        """Load the specified feature extractor."""
-        print(f"Loading {self.descriptor_name} model...")
-        start = time.time()
-
-        if self.descriptor_name == 'CosPlace':
-            from feature_extraction.feature_extractor_cosplace import CosPlaceFeatureExtractor
-            self.extractor = CosPlaceFeatureExtractor()
-        elif self.descriptor_name == 'EigenPlaces':
-            from feature_extraction.feature_extractor_eigenplaces import EigenPlacesFeatureExtractor
-            self.extractor = EigenPlacesFeatureExtractor()
-        elif self.descriptor_name == 'NetVLAD':
-            from feature_extraction.feature_extractor_patchnetvlad import PatchNetVLADFeatureExtractor
-            self.extractor = PatchNetVLADFeatureExtractor()
-        elif self.descriptor_name == 'HDC-DELF':
-            from feature_extraction.feature_extractor_holistic import HDCDELF
-            self.extractor = HDCDELF()
-        elif self.descriptor_name == 'AlexNet':
-            from feature_extraction.feature_extractor_holistic import AlexNetConv3Extractor
-            self.extractor = AlexNetConv3Extractor()
-        else:
-            raise ValueError(f"Unknown descriptor: {self.descriptor_name}")
-
-        print(f"Model loaded in {time.time()-start:.2f}s")
-
-    def compute_features(self, images):
-        """Extract features from a list of images."""
-        return self.extractor.compute_features(images)
-
-
-class LiveVPR:
-    """
-    Live Visual Place Recognition System.
-
-    This class handles:
-    - Building reference databases from image directories
-    - Real-time localization from camera feed
-    - Batch evaluation on recorded videos or image sets
-    """
-
-    def __init__(self, descriptor='CosPlace'):
-        """
-        Initialize the VPR system.
-
-        Args:
-            descriptor: Feature extractor to use
-                       ('CosPlace', 'EigenPlaces', 'NetVLAD', 'HDC-DELF', 'AlexNet')
-        """
-        self.extractor = FeatureExtractorWrapper(descriptor)
-        self.descriptor_name = descriptor
-        self.D_db = None
-        self.db_image_paths = None
-        self.db_metadata = None
-
-    def build_database(self, image_dir, output_path='database.npz',
-                       target_size=(640, 480)):
-        """
-        Build reference database from images in a directory.
-
-        Args:
-            image_dir: Path to directory containing reference images
-            output_path: Where to save the database file
-            target_size: Resize images to this size (width, height)
-
-        Returns:
-            Tuple of (descriptors array, image paths list)
-        """
-        print(f"\n{'='*60}")
-        print(f"BUILDING REFERENCE DATABASE")
-        print(f"{'='*60}")
-        print(f"Source directory: {image_dir}")
-        print(f"Output file: {output_path}")
-        print(f"Target size: {target_size}")
-        print(f"Descriptor: {self.descriptor_name}")
-        print(f"{'='*60}\n")
-
-        # Find all images
-        image_dir = Path(image_dir)
-        extensions = ['*.jpg', '*.jpeg', '*.png', '*.JPG', '*.JPEG', '*.PNG']
-        image_paths = []
-        for ext in extensions:
-            image_paths.extend(image_dir.glob(ext))
-        image_paths = sorted([str(p) for p in image_paths])
-
-        if len(image_paths) == 0:
-            print(f"ERROR: No images found in {image_dir}")
-            return None, None
-
-        print(f"Found {len(image_paths)} images")
-
-        # Load and preprocess images
-        print("Loading images...")
-        images = []
-        valid_paths = []
-        for i, p in enumerate(image_paths):
-            img = cv2.imread(p)
-            if img is None:
-                print(f"  Warning: Could not read {p}")
-                continue
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            img = cv2.resize(img, target_size)
-            images.append(img)
-            valid_paths.append(p)
-
-            if (i + 1) % 50 == 0:
-                print(f"  Loaded {i+1}/{len(image_paths)} images")
-
-        print(f"Successfully loaded {len(images)} images")
-
-        # Extract features
-        print("\nExtracting features...")
-        start = time.time()
-        D_db = self.extractor.compute_features(images)
-        extraction_time = time.time() - start
-        print(f"Feature extraction took {extraction_time:.2f}s")
-        print(f"Average: {extraction_time/len(images)*1000:.1f}ms per image")
-
-        # Normalize descriptors
-        norms = np.linalg.norm(D_db, axis=1, keepdims=True)
-        D_db = D_db / (norms + 1e-8)
-
-        # Create metadata
-        metadata = {
-            'descriptor': self.descriptor_name,
-            'num_images': len(valid_paths),
-            'descriptor_dim': D_db.shape[1],
-            'target_size': target_size,
-            'created': datetime.now().isoformat(),
-            'source_dir': str(image_dir)
-        }
-
-        # Save database
-        np.savez(output_path,
-                 descriptors=D_db,
-                 image_paths=np.array(valid_paths),
-                 metadata=json.dumps(metadata))
-
-        print(f"\n{'='*60}")
-        print(f"DATABASE CREATED SUCCESSFULLY")
-        print(f"{'='*60}")
-        print(f"Saved to: {output_path}")
-        print(f"Descriptor shape: {D_db.shape}")
-        print(f"File size: {os.path.getsize(output_path) / 1024 / 1024:.2f} MB")
-        print(f"{'='*60}\n")
-
-        self.D_db = D_db
-        self.db_image_paths = valid_paths
-        self.db_metadata = metadata
-
-        return D_db, valid_paths
-
-    def load_database(self, db_path='database.npz'):
-        """
-        Load a pre-built database.
-
-        Args:
-            db_path: Path to the database file
-        """
-        print(f"Loading database from {db_path}...")
-
-        if not os.path.exists(db_path):
-            print(f"ERROR: Database file not found: {db_path}")
-            return False
-
-        data = np.load(db_path, allow_pickle=True)
-        self.D_db = data['descriptors']
-        self.db_image_paths = list(data['image_paths'])
-
-        if 'metadata' in data:
-            self.db_metadata = json.loads(str(data['metadata']))
-            print(f"Database info:")
-            print(f"  - Descriptor: {self.db_metadata.get('descriptor', 'unknown')}")
-            print(f"  - Images: {self.db_metadata.get('num_images', len(self.db_image_paths))}")
-            print(f"  - Dimension: {self.db_metadata.get('descriptor_dim', self.D_db.shape[1])}")
-            print(f"  - Created: {self.db_metadata.get('created', 'unknown')}")
-        else:
-            print(f"Loaded {len(self.db_image_paths)} reference images")
-            print(f"Descriptor dimension: {self.D_db.shape[1]}")
-
-        return True
-
-    def localize(self, image, top_k=5, threshold=0.5, target_size=(640, 480)):
-        """
-        Find matching location for a single image.
-
-        Args:
-            image: Input image (BGR format from OpenCV)
-            top_k: Number of top matches to return
-            threshold: Minimum similarity score for recognition
-            target_size: Size to resize input image
-
-        Returns:
-            Dictionary with match results
-        """
-        # Preprocess image
-        img = cv2.resize(image, target_size)
-        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-
-        # Extract feature
-        start = time.time()
-        d_q = self.extractor.compute_features([img_rgb])
-        extraction_time = time.time() - start
-
-        # Normalize
-        d_q = d_q / (np.linalg.norm(d_q) + 1e-8)
-
-        # Compute similarities
-        similarities = (self.D_db @ d_q.T).flatten()
-
-        # Get top-k matches
-        top_indices = np.argsort(similarities)[-top_k:][::-1]
-        top_scores = similarities[top_indices]
-
-        return {
-            'best_match_idx': int(top_indices[0]),
-            'best_score': float(top_scores[0]),
-            'top_k_indices': top_indices.tolist(),
-            'top_k_scores': top_scores.tolist(),
-            'recognized': float(top_scores[0]) > threshold,
-            'extraction_time_ms': extraction_time * 1000,
-            'all_similarities': similarities
-        }
-
-    def run_live(self, camera_id=0, threshold=0.5, show_top_k=True):
-        """
-        Run live localization from camera feed.
-
-        Args:
-            camera_id: Camera device ID (0 for built-in, 1+ for external)
-            threshold: Recognition threshold
-            show_top_k: Whether to show top-3 matches panel
-        """
-        print(f"\n{'='*60}")
-        print(f"STARTING LIVE VPR TEST")
-        print(f"{'='*60}")
-        print(f"Camera ID: {camera_id}")
-        print(f"Threshold: {threshold}")
-        print(f"Database: {len(self.db_image_paths)} reference images")
-        print(f"{'='*60}")
-        print("\nControls:")
-        print("  q     - Quit")
-        print("  s     - Save current frame")
-        print("  t     - Toggle top-k panel")
-        print("  +/-   - Adjust threshold")
-        print(f"{'='*60}\n")
-
-        cap = cv2.VideoCapture(camera_id)
-
-        if not cap.isOpened():
-            print(f"ERROR: Cannot open camera {camera_id}")
-            print("Try different camera IDs: 0, 1, 2...")
-            return
-
-        # Get camera properties
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        print(f"Camera resolution: {width}x{height}")
-
-        frame_count = 0
-        fps_start = time.time()
-        fps = 0
-
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                print("Failed to grab frame")
-                break
-
-            # Localize
-            result = self.localize(frame, threshold=threshold)
-
-            # Calculate FPS
-            frame_count += 1
-            if frame_count % 10 == 0:
-                fps = 10 / (time.time() - fps_start)
-                fps_start = time.time()
-
-            # Create display
-            display = self._create_display(frame, result, threshold, fps, show_top_k)
-
-            cv2.imshow('Live VPR - Press q to quit', display)
-
-            # Handle key presses
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord('q'):
-                break
-            elif key == ord('s'):
-                filename = f'capture_{datetime.now().strftime("%Y%m%d_%H%M%S")}.jpg'
-                cv2.imwrite(filename, frame)
-                print(f"Saved: {filename}")
-            elif key == ord('t'):
-                show_top_k = not show_top_k
-            elif key == ord('+') or key == ord('='):
-                threshold = min(1.0, threshold + 0.05)
-                print(f"Threshold: {threshold:.2f}")
-            elif key == ord('-'):
-                threshold = max(0.0, threshold - 0.05)
-                print(f"Threshold: {threshold:.2f}")
-
-        cap.release()
-        cv2.destroyAllWindows()
-        print("\nLive test ended.")
-
-    def _create_display(self, frame, result, threshold, fps, show_top_k):
-        """Create the display frame with overlays."""
-        display = frame.copy()
-        h, w = display.shape[:2]
-
-        # Status bar background
-        cv2.rectangle(display, (0, 0), (w, 70), (0, 0, 0), -1)
-
-        # Recognition status
-        if result['recognized']:
-            color = (0, 255, 0)  # Green
-            status = f"MATCH: #{result['best_match_idx']} (score: {result['best_score']:.3f})"
-        else:
-            color = (0, 0, 255)  # Red
-            status = f"UNKNOWN (best: {result['best_score']:.3f})"
-
-        cv2.putText(display, status, (10, 30),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
-
-        # Info line
-        info = f"Threshold: {threshold:.2f} | Latency: {result['extraction_time_ms']:.0f}ms | FPS: {fps:.1f}"
-        cv2.putText(display, info, (10, 55),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
-
-        # Show matched reference image
-        if result['recognized']:
-            try:
-                ref_path = self.db_image_paths[result['best_match_idx']]
-                ref_img = cv2.imread(ref_path)
-                if ref_img is not None:
-                    ref_h, ref_w = 150, 200
-                    ref_img = cv2.resize(ref_img, (ref_w, ref_h))
-
-                    # Add border
-                    cv2.rectangle(display, (w-ref_w-15, 75), (w-5, 75+ref_h+10), color, 2)
-                    display[80:80+ref_h, w-ref_w-10:w-10] = ref_img
-
-                    # Label
-                    cv2.putText(display, f"Ref #{result['best_match_idx']}",
-                               (w-ref_w-10, 75+ref_h+25),
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
-            except Exception as e:
-                pass
-
-        # Show top-k matches panel
-        if show_top_k and len(result['top_k_indices']) > 1:
-            panel_y = h - 120
-            cv2.rectangle(display, (0, panel_y-5), (w, h), (30, 30, 30), -1)
-            cv2.putText(display, "Top matches:", (10, panel_y+15),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
-
-            thumb_w, thumb_h = 100, 75
-            for i, (idx, score) in enumerate(zip(result['top_k_indices'][:5],
-                                                  result['top_k_scores'][:5])):
-                x = 10 + i * (thumb_w + 10)
-                if x + thumb_w > w - 10:
-                    break
-
-                try:
-                    ref_img = cv2.imread(self.db_image_paths[idx])
-                    if ref_img is not None:
-                        ref_img = cv2.resize(ref_img, (thumb_w, thumb_h))
-                        display[panel_y+25:panel_y+25+thumb_h, x:x+thumb_w] = ref_img
-
-                        # Score label
-                        score_color = (0, 255, 0) if score > threshold else (100, 100, 100)
-                        cv2.putText(display, f"#{idx}: {score:.2f}", (x, panel_y+25+thumb_h+15),
-                                   cv2.FONT_HERSHEY_SIMPLEX, 0.4, score_color, 1)
-                except:
-                    pass
-
-        return display
-
-    def run_video_test(self, video_path, threshold=0.5, output_video=None):
-        """
-        Run localization on a recorded video.
-
-        Args:
-            video_path: Path to video file
-            threshold: Recognition threshold
-            output_video: Optional path to save annotated output video
-        """
-        print(f"\n{'='*60}")
-        print(f"VIDEO TEST")
-        print(f"{'='*60}")
-        print(f"Input: {video_path}")
-        print(f"Threshold: {threshold}")
-
-        cap = cv2.VideoCapture(video_path)
-        if not cap.isOpened():
-            print(f"ERROR: Cannot open video {video_path}")
-            return None
-
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        fps_video = cap.get(cv2.CAP_PROP_FPS)
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
-        print(f"Video: {total_frames} frames, {fps_video:.1f} FPS, {width}x{height}")
-        print(f"{'='*60}\n")
-
-        # Setup output video if requested
-        out = None
-        if output_video:
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            out = cv2.VideoWriter(output_video, fourcc, fps_video, (width, height))
-
-        results = []
-        frame_idx = 0
-
-        print("Processing... (press 'q' to stop early)")
-
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
-
-            result = self.localize(frame, threshold=threshold)
-            result['frame_idx'] = frame_idx
-            results.append(result)
-
-            # Create display
-            display = self._create_display(frame, result, threshold, 0, False)
-
-            # Progress bar
-            progress = int((frame_idx / total_frames) * 50)
-            print(f"\r[{'='*progress}{' '*(50-progress)}] {frame_idx}/{total_frames}", end='')
-
-            # Save to output video
-            if out:
-                out.write(display)
-
-            # Show frame
-            cv2.imshow('Video Test - Press q to stop', display)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                print("\nStopped early by user")
-                break
-
-            frame_idx += 1
-
-        print()  # New line after progress bar
-
-        cap.release()
-        if out:
-            out.release()
-            print(f"Output video saved to: {output_video}")
-        cv2.destroyAllWindows()
-
-        # Calculate statistics
-        self._print_results_summary(results, threshold)
-
-        return results
-
-    def run_batch_eval(self, query_dir, threshold=0.5, gt_tolerance=5):
-        """
-        Run batch evaluation on a directory of query images.
-
-        Args:
-            query_dir: Directory containing query images
-            threshold: Recognition threshold
-            gt_tolerance: Frame index tolerance for ground truth matching
-
-        Returns:
-            Dictionary with evaluation results
-        """
-        print(f"\n{'='*60}")
-        print(f"BATCH EVALUATION")
-        print(f"{'='*60}")
-        print(f"Query directory: {query_dir}")
-        print(f"Threshold: {threshold}")
-        print(f"GT tolerance: +/- {gt_tolerance} frames")
-        print(f"{'='*60}\n")
-
-        # Load query images
-        query_dir = Path(query_dir)
-        extensions = ['*.jpg', '*.jpeg', '*.png', '*.JPG', '*.JPEG', '*.PNG']
-        query_paths = []
-        for ext in extensions:
-            query_paths.extend(query_dir.glob(ext))
-        query_paths = sorted([str(p) for p in query_paths])
-
-        if len(query_paths) == 0:
-            print(f"ERROR: No images found in {query_dir}")
-            return None
-
-        print(f"Found {len(query_paths)} query images")
-
-        results = []
-        for i, qpath in enumerate(query_paths):
-            img = cv2.imread(qpath)
-            if img is None:
-                continue
-
-            result = self.localize(img, threshold=threshold)
-            result['query_path'] = qpath
-            result['query_idx'] = i
-
-            # Simple ground truth: assume query i should match reference ~i
-            # (This works when both traversals have similar pacing)
-            expected_idx = int(i * len(self.db_image_paths) / len(query_paths))
-            result['expected_idx'] = expected_idx
-
-            # Check if match is within tolerance
-            if result['recognized']:
-                match_idx = result['best_match_idx']
-                result['correct'] = abs(match_idx - expected_idx) <= gt_tolerance
-            else:
-                result['correct'] = False
-
-            results.append(result)
-
-            if (i + 1) % 20 == 0:
-                print(f"Processed {i+1}/{len(query_paths)} queries")
-
-        self._print_results_summary(results, threshold, show_accuracy=True)
-
-        return results
-
-    def _print_results_summary(self, results, threshold, show_accuracy=False):
-        """Print summary statistics for test results."""
-        print(f"\n{'='*60}")
-        print(f"RESULTS SUMMARY")
-        print(f"{'='*60}")
-
-        recognized = sum(1 for r in results if r['recognized'])
-        total = len(results)
-
-        scores = [r['best_score'] for r in results]
-        latencies = [r['extraction_time_ms'] for r in results]
-
-        print(f"Total frames/images: {total}")
-        print(f"Recognized: {recognized} ({100*recognized/total:.1f}%)")
-        print(f"Not recognized: {total-recognized} ({100*(total-recognized)/total:.1f}%)")
-        print(f"\nSimilarity scores:")
-        print(f"  Mean:   {np.mean(scores):.3f}")
-        print(f"  Median: {np.median(scores):.3f}")
-        print(f"  Min:    {np.min(scores):.3f}")
-        print(f"  Max:    {np.max(scores):.3f}")
-        print(f"\nLatency:")
-        print(f"  Mean:   {np.mean(latencies):.1f}ms")
-        print(f"  Median: {np.median(latencies):.1f}ms")
-
-        if show_accuracy:
-            correct = sum(1 for r in results if r.get('correct', False))
-            print(f"\nAccuracy (within GT tolerance):")
-            print(f"  Correct: {correct}/{total} ({100*correct/total:.1f}%)")
-
-        print(f"{'='*60}\n")
-
-
-def check_camera(camera_id=0):
-    """Quick check if camera is accessible."""
-    print(f"Testing camera {camera_id}...")
-    cap = cv2.VideoCapture(camera_id)
-
-    if not cap.isOpened():
-        print(f"FAILED: Cannot open camera {camera_id}")
-        return False
-
-    ret, frame = cap.read()
-    cap.release()
-
-    if ret:
-        print(f"SUCCESS: Camera {camera_id} works!")
-        print(f"Frame size: {frame.shape}")
-        return True
+import numpy as np
+
+from live_vpr import (
+    FrameSamplingConfig,
+    LiveDisplay,
+    LiveLocalizer,
+    LiveReferenceRecorder,
+    MapBuildConfig,
+    MapBuilder,
+    OpenCVFrameSource,
+    SUPPORTED_DESCRIPTORS,
+    VideoRecordingConfig,
+    delete_source_alias,
+    get_source_aliases_path,
+    list_available_capture_sources,
+    load_source_aliases,
+    load_reference_map,
+    probe_capture_source,
+    resolve_capture_source,
+    sample_video_to_frames,
+    save_source_alias,
+)
+
+
+LEGACY_MODE_ALIASES = {
+    "build_db": "build_map",
+    "build_live_db": "build_live_map",
+    "live_test": "live",
+    "video_test": "video",
+    "check_camera": "check_source",
+    "list_sources": "list_sources",
+}
+
+
+def _import_cv2():
+    try:
+        import cv2  # type: ignore
+    except ImportError as exc:
+        raise RuntimeError(
+            "OpenCV is required for live/video localization. "
+            "Install it with `pip install opencv-python` or reinstall from `requirements.txt`."
+        ) from exc
+    return cv2
+
+
+def normalize_mode(mode: str) -> str:
+    return LEGACY_MODE_ALIASES.get(mode, mode)
+
+
+def resolve_runtime_descriptor(reference_map, descriptor_override: str | None) -> str:
+    descriptor = str(reference_map.metadata.get("descriptor", "CosPlace"))
+    if descriptor_override and descriptor_override != descriptor:
+        raise ValueError(
+            f"Descriptor mismatch: map was built with {descriptor}, "
+            f"but runtime override requested {descriptor_override}."
+        )
+    return descriptor
+
+
+def print_reference_map_summary(reference_map) -> None:
+    print(f"Loaded map: {reference_map.metadata.get('map_path', 'in-memory')}")
+    print(f"Descriptor: {reference_map.metadata.get('descriptor', 'unknown')}")
+    print(f"Images: {reference_map.num_images}")
+    print(f"Descriptor dim: {reference_map.descriptor_dim}")
+    print(f"Target size: {tuple(reference_map.metadata.get('target_size', [640, 480]))}")
+    print(f"Created: {reference_map.metadata.get('created_utc', 'unknown')}")
+
+
+def print_source_resolution(source: str | int) -> None:
+    resolved = resolve_capture_source(source)
+    if resolved["alias"] is not None:
+        print(f"Source alias: {resolved['alias']}")
+    print(f"Resolved source: {resolved['resolved_source']}")
+    print(f"Aliases file: {resolved['aliases_path']}")
+
+
+def build_map(args: argparse.Namespace) -> None:
+    print(f"\n{'=' * 68}")
+    print("OFFLINE PHASE: MAP BUILDING")
+    print(f"{'=' * 68}")
+    print(f"Reference directory: {args.data_dir}")
+    print(f"Descriptor: {args.descriptor}")
+    print(f"Output map: {args.map_path}")
+    print(f"Target size: {(args.resize_width, args.resize_height)}")
+
+    config = MapBuildConfig(
+        image_dir=args.data_dir,
+        output_path=args.map_path,
+        descriptor=args.descriptor,
+        target_size=(args.resize_width, args.resize_height),
+        recursive=args.recursive,
+    )
+    try:
+        builder = MapBuilder(args.descriptor)
+        reference_map, stats = builder.build(config)
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            f"Missing dependency '{exc.name}' while building a map with descriptor {args.descriptor}. "
+            "Install the project requirements before running the live pipeline."
+        ) from exc
+
+    print("\nMap built successfully.")
+    print(f"Images indexed: {reference_map.num_images}")
+    print(f"Descriptor dimension: {reference_map.descriptor_dim}")
+    print(f"Load time: {stats['load_time_s']:.2f}s")
+    print(f"Feature extraction time: {stats['extraction_time_s']:.2f}s")
+    print(f"Average extraction time: {stats['avg_extraction_ms']:.1f}ms/image")
+    print(f"Saved to: {Path(args.map_path).expanduser().resolve()}")
+
+
+def build_live_map(args: argparse.Namespace, use_video: bool = False) -> None:
+    source = args.video if use_video else args.source
+    if source is None:
+        raise ValueError("A capture source is required for live map building.")
+
+    print(f"\n{'=' * 68}")
+    print("OFFLINE PHASE: LIVE MAP BUILDING")
+    print(f"{'=' * 68}")
+    print(f"Capture source: {source}")
+    if not use_video:
+        print_source_resolution(source)
+    print(f"Descriptor: {args.descriptor}")
+    print(f"Output map: {args.map_path}")
+    print(f"Recording path: {args.recording_path}")
+    print(f"Sampled frame directory: {args.capture_dir}")
+    print(f"Sampling rate: {args.sample_fps:.2f} fps")
+    print(f"Target size: {(args.resize_width, args.resize_height)}")
+
+    if use_video:
+        recording_video_path = str(Path(source).expanduser().resolve())
+        print(f"Using existing traversal video: {recording_video_path}")
     else:
-        print(f"FAILED: Could not read frame from camera {camera_id}")
-        return False
+        recording_config = VideoRecordingConfig(
+            source=source,
+            output_video=args.recording_path,
+            window_name=args.capture_window_name,
+            frame_width=args.frame_width,
+            frame_height=args.frame_height,
+            mirror=args.mirror,
+            start_recording=args.start_recording,
+        )
+        recorder = LiveReferenceRecorder(recording_config)
+        recording_result = recorder.run()
 
+        if recording_result.frame_count <= 0:
+            raise RuntimeError("No video frames were recorded, so a live map could not be built.")
+        recording_video_path = recording_result.video_path
 
-def main():
-    parser = argparse.ArgumentParser(
-        description='Live VPR Testing for CMU-Africa Campus Dataset',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Build database from day images
-  python live_vpr_test.py --mode build_db --data_dir data/CMUAfrica/day --db_path day_db.npz
-
-  # Live test with built-in camera
-  python live_vpr_test.py --mode live_test --db_path day_db.npz --camera 0
-
-  # Test with recorded video
-  python live_vpr_test.py --mode video_test --db_path day_db.npz --video test.mp4
-
-  # Batch evaluation
-  python live_vpr_test.py --mode batch_eval --db_path day_db.npz --query_dir data/CMUAfrica/night
-
-  # Check camera
-  python live_vpr_test.py --mode check_camera --camera 0
-        """
+    sampling_result = sample_video_to_frames(
+        FrameSamplingConfig(
+            video_path=recording_video_path,
+            output_dir=args.capture_dir,
+            sample_fps=args.sample_fps,
+            frame_prefix=args.capture_prefix,
+            max_frames=args.max_captures,
+        )
     )
 
-    parser.add_argument('--mode',
-                       choices=['build_db', 'live_test', 'video_test', 'batch_eval', 'check_camera'],
-                       required=True,
-                       help='Operation mode')
-    parser.add_argument('--data_dir', type=str, default='data/CMUAfrica/day',
-                       help='Directory with reference images (for build_db)')
-    parser.add_argument('--db_path', type=str, default='database.npz',
-                       help='Path to database file')
-    parser.add_argument('--camera', type=int, default=0,
-                       help='Camera ID (0=built-in, 1+=external)')
-    parser.add_argument('--video', type=str,
-                       help='Video path (for video_test)')
-    parser.add_argument('--query_dir', type=str,
-                       help='Query images directory (for batch_eval)')
-    parser.add_argument('--threshold', type=float, default=0.5,
-                       help='Recognition threshold (0.0-1.0)')
-    parser.add_argument('--descriptor', type=str, default='CosPlace',
-                       choices=['CosPlace', 'EigenPlaces', 'NetVLAD', 'HDC-DELF', 'AlexNet'],
-                       help='Feature descriptor to use')
-    parser.add_argument('--output_video', type=str,
-                       help='Save annotated video to this path')
-    parser.add_argument('--gt_tolerance', type=int, default=5,
-                       help='Ground truth frame tolerance for batch_eval')
+    if len(sampling_result.saved_paths) < args.min_captures:
+        raise RuntimeError(
+            f"Only {len(sampling_result.saved_paths)} reference frames were sampled, "
+            f"but at least {args.min_captures} are required to build a map."
+        )
 
-    args = parser.parse_args()
+    try:
+        builder = MapBuilder(args.descriptor)
+        image_paths = [Path(path) for path in sampling_result.saved_paths]
+        reference_map, stats = builder.build_from_paths(
+            image_paths=image_paths,
+            output_path=args.map_path,
+            image_dir=sampling_result.output_dir,
+            target_size=(args.resize_width, args.resize_height),
+            recursive=False,
+            metadata_extra={
+                "live_build_video_path": recording_video_path,
+                "live_build_sample_fps": sampling_result.sample_fps,
+                "live_build_source_fps": sampling_result.source_fps,
+                "live_build_video_duration_s": sampling_result.video_duration_s,
+            },
+        )
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            f"Missing dependency '{exc.name}' while building a live map with descriptor {args.descriptor}. "
+            "Install the project requirements before running the live pipeline."
+        ) from exc
 
-    # Quick camera check mode
-    if args.mode == 'check_camera':
-        check_camera(args.camera)
+    print("\nLive map built successfully.")
+    print(f"Traversal video: {recording_video_path}")
+    print(f"Sampled reference images: {len(sampling_result.saved_paths)}")
+    print(f"Descriptor dimension: {reference_map.descriptor_dim}")
+    print(f"Load time: {stats['load_time_s']:.2f}s")
+    print(f"Feature extraction time: {stats['extraction_time_s']:.2f}s")
+    print(f"Average extraction time: {stats['avg_extraction_ms']:.1f}ms/image")
+    print(f"Saved to: {Path(args.map_path).expanduser().resolve()}")
+
+
+def check_source(args: argparse.Namespace, use_video: bool = False) -> None:
+    source = args.video if use_video else args.source
+    if source is None:
+        raise ValueError("A capture source is required.")
+
+    print(f"Checking source: {source}")
+    info = probe_capture_source(source, width=args.frame_width, height=args.frame_height)
+    print("Source opened successfully.")
+    if info.get("alias") is not None:
+        print(f"Source alias: {info['alias']}")
+    print(f"Resolved source: {info['source']}")
+    print(f"Frame shape: {info['frame_shape']}")
+    print(f"Backend: {info['backend']}")
+
+
+def list_sources(args: argparse.Namespace) -> None:
+    print(f"Scanning camera indexes 0..{args.source_scan_max}")
+    if args.source_snapshot_dir:
+        print(f"Saving preview snapshots to: {Path(args.source_snapshot_dir).expanduser().resolve()}")
+
+    sources = list_available_capture_sources(
+        max_index=args.source_scan_max,
+        width=args.frame_width,
+        height=args.frame_height,
+        snapshot_dir=args.source_snapshot_dir,
+    )
+    aliases = load_source_aliases()
+
+    if not sources:
+        print("No camera indexes were successfully opened in the scanned range.")
         return
 
-    # Initialize VPR system
-    vpr = LiveVPR(descriptor=args.descriptor)
+    inverse_aliases = {value: key for key, value in aliases.items()}
+    print("\nDetected sources:")
+    for item in sources:
+        alias = inverse_aliases.get(str(item["source"]))
+        alias_text = f" alias={alias}" if alias else ""
+        preview_text = f" preview={item['preview_path']}" if item.get("preview_path") else ""
+        print(
+            f"  index={item['index']} resolved={item['source']} "
+            f"shape={item['frame_shape']} backend={item['backend']}{alias_text}{preview_text}"
+        )
 
-    if args.mode == 'build_db':
-        vpr.build_database(args.data_dir, args.db_path)
 
-    elif args.mode == 'live_test':
-        if not vpr.load_database(args.db_path):
-            return
-        vpr.run_live(camera_id=args.camera, threshold=args.threshold)
+def save_source_alias_command(args: argparse.Namespace) -> None:
+    if not args.alias:
+        raise ValueError("--alias is required when saving a source alias")
+    if args.source is None:
+        raise ValueError("--source is required when saving a source alias")
 
-    elif args.mode == 'video_test':
+    aliases_path = save_source_alias(args.alias, args.source)
+    resolved = resolve_capture_source(args.alias)
+    print(f"Saved source alias '{args.alias}' -> {args.source}")
+    print(f"Resolved source: {resolved['resolved_source']}")
+    print(f"Aliases file: {aliases_path}")
+
+
+def list_source_aliases_command() -> None:
+    aliases = load_source_aliases()
+    aliases_path = get_source_aliases_path()
+    print(f"Aliases file: {aliases_path}")
+    if not aliases:
+        print("No source aliases saved yet.")
+        return
+
+    print("Saved source aliases:")
+    for alias, source in sorted(aliases.items()):
+        print(f"  {alias} -> {source}")
+
+
+def delete_source_alias_command(args: argparse.Namespace) -> None:
+    if not args.alias:
+        raise ValueError("--alias is required when deleting a source alias")
+    aliases_path = delete_source_alias(args.alias)
+    print(f"Deleted alias '{args.alias}' if it existed.")
+    print(f"Aliases file: {aliases_path}")
+
+
+def create_video_writer(output_video: str | None, frame_shape: tuple[int, int, int]):
+    if not output_video:
+        return None
+
+    cv2 = _import_cv2()
+    output_path = Path(output_video).expanduser().resolve()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    height, width = frame_shape[:2]
+    writer = cv2.VideoWriter(
+        str(output_path),
+        cv2.VideoWriter_fourcc(*"mp4v"),
+        20.0,
+        (width, height),
+    )
+    return writer
+
+
+def run_online(args: argparse.Namespace, use_video: bool = False) -> None:
+    cv2 = _import_cv2()
+
+    reference_map = load_reference_map(args.map_path)
+    reference_map.metadata["map_path"] = str(Path(args.map_path).expanduser().resolve())
+    descriptor = resolve_runtime_descriptor(reference_map, args.descriptor)
+    print(f"\n{'=' * 68}")
+    print("ONLINE PHASE: LIVE LOCALIZATION")
+    print(f"{'=' * 68}")
+    print_reference_map_summary(reference_map)
+
+    target_size = tuple(reference_map.metadata.get("target_size", [640, 480]))
+    try:
+        localizer = LiveLocalizer(
+            reference_map=reference_map,
+            descriptor_name=descriptor,
+            threshold=args.threshold,
+            top_k=args.top_k,
+        )
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            f"Missing dependency '{exc.name}' while loading descriptor {descriptor}. "
+            "Install the project requirements before running online localization."
+        ) from exc
+    display = LiveDisplay(reference_map=reference_map, show_top_k=not args.hide_top_k)
+
+    source = args.video if use_video else args.source
+    if source is None:
+        raise ValueError("A capture source is required.")
+
+    print(f"Capture source: {source}")
+    if not use_video:
+        print_source_resolution(source)
+    print("Controls: i=start/pause inference, q=quit, s=save frame, t=toggle top-k, +=raise threshold, -=lower threshold")
+
+    frame_source = OpenCVFrameSource(source, width=args.frame_width, height=args.frame_height)
+    writer = None
+    inference_results = []
+    snapshot_dir = Path(args.snapshot_dir).expanduser().resolve()
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        frame_source.open()
+        frame_count = 0
+        fps = 0.0
+        fps_start = time.time()
+        last_result = None
+        last_inference_time = 0.0
+        process_interval_s = 0.0 if args.process_fps <= 0 else 1.0 / args.process_fps
+        inference_active = args.start_inference
+
+        while True:
+            ok, frame = frame_source.read()
+            if not ok or frame is None:
+                if use_video:
+                    break
+                print("Failed to read frame from capture source.")
+                break
+
+            now = time.time()
+            should_run_inference = (
+                inference_active
+                and (
+                    last_result is None
+                    or process_interval_s == 0.0
+                    or (now - last_inference_time) >= process_interval_s
+                )
+            )
+            if should_run_inference:
+                frame_for_model = frame
+                resized = cv2.resize(frame_for_model, target_size)
+                rgb_image = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+                last_result = localizer.localize_rgb(rgb_image)
+                inference_results.append(last_result)
+                last_inference_time = time.time()
+
+            frame_count += 1
+            if frame_count % 10 == 0:
+                elapsed = time.time() - fps_start
+                fps = 10.0 / elapsed if elapsed > 0 else 0.0
+                fps_start = time.time()
+
+            result_age_ms = 0.0 if last_result is None else max(0.0, (time.time() - last_inference_time) * 1000.0)
+            rendered = display.render(
+                frame,
+                last_result,
+                localizer.threshold,
+                fps,
+                result_age_ms=result_age_ms,
+                process_fps=args.process_fps,
+                inference_active=inference_active,
+            )
+            if args.mirror:
+                rendered = cv2.flip(rendered, 1)
+
+            if writer is None and args.output_video:
+                writer = create_video_writer(args.output_video, rendered.shape)
+            if writer is not None:
+                writer.write(rendered)
+
+            cv2.imshow(args.window_name, rendered)
+            key = cv2.waitKey(1) & 0xFF
+
+            if key == ord("q"):
+                break
+            if key == ord("i"):
+                inference_active = not inference_active
+                state = "ON" if inference_active else "PAUSED"
+                print(f"Inference: {state}")
+            if key == ord("s"):
+                filename = snapshot_dir / f"capture_{int(time.time())}.jpg"
+                cv2.imwrite(str(filename), frame)
+                print(f"Saved frame to {filename}")
+            if key == ord("t"):
+                display.show_top_k = not display.show_top_k
+            if key in (ord("+"), ord("=")):
+                localizer.set_threshold(localizer.threshold + 0.05)
+                print(f"Threshold: {localizer.threshold:.2f}")
+            if key == ord("-"):
+                localizer.set_threshold(localizer.threshold - 0.05)
+                print(f"Threshold: {localizer.threshold:.2f}")
+
+        print_summary(inference_results, localizer.threshold, frame_count, args.process_fps)
+        if args.output_video:
+            print(f"Annotated output saved to {Path(args.output_video).expanduser().resolve()}")
+    finally:
+        frame_source.release()
+        if writer is not None:
+            writer.release()
+        try:
+            cv2.destroyAllWindows()
+        except Exception:
+            pass
+
+
+def print_summary(results, threshold: float, displayed_frames: int | None = None, process_fps: float | None = None) -> None:
+    if not results:
+        print(f"\n{'=' * 68}")
+        print("SESSION SUMMARY")
+        print(f"{'=' * 68}")
+        if displayed_frames is not None:
+            print(f"Frames displayed: {displayed_frames}")
+        if process_fps is not None:
+            cadence = "every frame" if process_fps <= 0 else f"{process_fps:.2f} fps"
+            print(f"Inference cadence target: {cadence}")
+        print("No inference runs were executed.")
+        return
+
+    scores = np.array([result.best_score for result in results], dtype=np.float32)
+    latencies = np.array([result.extraction_time_ms for result in results], dtype=np.float32)
+    recognized = sum(1 for result in results if result.recognized)
+
+    print(f"\n{'=' * 68}")
+    print("SESSION SUMMARY")
+    print(f"{'=' * 68}")
+    if displayed_frames is not None:
+        print(f"Frames displayed: {displayed_frames}")
+    print(f"Inference runs: {len(results)}")
+    if process_fps is not None:
+        cadence = "every frame" if process_fps <= 0 else f"{process_fps:.2f} fps"
+        print(f"Inference cadence target: {cadence}")
+    print(f"Recognized inference results: {recognized} ({100 * recognized / len(results):.1f}%)")
+    print(f"Threshold used: {threshold:.2f}")
+    print(f"Best-score mean/median: {scores.mean():.3f} / {np.median(scores):.3f}")
+    print(f"Best-score min/max: {scores.min():.3f} / {scores.max():.3f}")
+    print(f"Latency mean/median: {latencies.mean():.1f}ms / {np.median(latencies):.1f}ms")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Offline map building and online live VPR localization",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Examples:\n"
+            "  python live_vpr_test.py --mode build_map --data_dir custom_dataset/day_images --map_path artifacts/campus_day_cosplace.npz\n"
+            "  python live_vpr_test.py --mode build_live_map --map_path artifacts/campus_day_live.npz --source 0 --recording_path artifacts/reference_videos/campus_day.mp4 --sample_fps 1.0\n"
+            "  python live_vpr_test.py --mode live --map_path artifacts/campus_day_cosplace.npz --source 0 --process_fps 2.0\n"
+            "  python live_vpr_test.py --mode live --map_path artifacts/campus_day_cosplace.npz --source 1\n"
+            "  python live_vpr_test.py --mode list_sources --source_scan_max 10 --source_snapshot_dir artifacts/source_previews\n"
+            "  python live_vpr_test.py --mode save_source_alias --alias phone --source 3\n"
+            "  python live_vpr_test.py --mode live --map_path artifacts/campus_day_cosplace.npz --source http://192.168.1.20:4747/video\n"
+            "  python live_vpr_test.py --mode video --map_path artifacts/campus_day_cosplace.npz --video demo_walk.mp4\n"
+            "  python live_vpr_test.py --mode check_source --source 0\n"
+        ),
+    )
+
+    parser.add_argument(
+        "--mode",
+        required=True,
+        choices=[
+            "build_map",
+            "build_db",
+            "build_live_map",
+            "build_live_db",
+            "live",
+            "live_test",
+            "video",
+            "video_test",
+            "check_source",
+            "check_camera",
+            "list_sources",
+            "save_source_alias",
+            "list_source_aliases",
+            "delete_source_alias",
+        ],
+        help="Pipeline stage or runtime mode",
+    )
+    parser.add_argument(
+        "--descriptor",
+        type=str,
+        default="CosPlace",
+        choices=SUPPORTED_DESCRIPTORS,
+        help="Descriptor used for map building and runtime localization",
+    )
+    parser.add_argument(
+        "--data_dir",
+        type=str,
+        default="custom_dataset/day_images",
+        help="Reference image directory for offline map building",
+    )
+    parser.add_argument(
+        "--map_path",
+        type=str,
+        default="artifacts/live_maps/campus_day_cosplace.npz",
+        help="Path to the saved reference map",
+    )
+    parser.add_argument(
+        "--source",
+        type=str,
+        default="0",
+        help="Capture source: webcam index, saved alias, virtual webcam index, or stream URL",
+    )
+    parser.add_argument(
+        "--video",
+        type=str,
+        help="Video file path for simulation playback or map building from an existing recording",
+    )
+    parser.add_argument(
+        "--alias",
+        type=str,
+        help="Friendly source alias name, for example 'phone' or 'laptop'",
+    )
+    parser.add_argument(
+        "--source_scan_max",
+        type=int,
+        default=10,
+        help="Highest numeric camera index to probe when using list_sources",
+    )
+    parser.add_argument(
+        "--source_snapshot_dir",
+        type=str,
+        help="Optional directory for saving one preview frame per detected source during list_sources",
+    )
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.5,
+        help="Recognition threshold on cosine similarity",
+    )
+    parser.add_argument(
+        "--top_k",
+        type=int,
+        default=5,
+        help="Number of top matches to display",
+    )
+    parser.add_argument(
+        "--process_fps",
+        type=float,
+        default=2.0,
+        help="How often to run localization during live/video inference. Use <=0 to process every frame",
+    )
+    parser.add_argument(
+        "--start_inference",
+        action="store_true",
+        help="Start live/video inference immediately instead of opening in paused mode",
+    )
+    parser.add_argument(
+        "--resize_width",
+        type=int,
+        default=640,
+        help="Reference-map resize width",
+    )
+    parser.add_argument(
+        "--resize_height",
+        type=int,
+        default=480,
+        help="Reference-map resize height",
+    )
+    parser.add_argument(
+        "--frame_width",
+        type=int,
+        default=1280,
+        help="Requested capture width for webcam sources",
+    )
+    parser.add_argument(
+        "--frame_height",
+        type=int,
+        default=720,
+        help="Requested capture height for webcam sources",
+    )
+    parser.add_argument(
+        "--capture_dir",
+        type=str,
+        default="artifacts/reference_captures",
+        help="Directory where sampled reference frames are saved before map building",
+    )
+    parser.add_argument(
+        "--recording_path",
+        type=str,
+        default="artifacts/reference_videos/live_reference_traversal.mp4",
+        help="Path for the recorded traversal video used by live map building",
+    )
+    parser.add_argument(
+        "--capture_prefix",
+        type=str,
+        default="ref",
+        help="Filename prefix for sampled reference frames",
+    )
+    parser.add_argument(
+        "--sample_fps",
+        type=float,
+        default=1.0,
+        help="How densely to sample frames from the recorded traversal video when building a live map",
+    )
+    parser.add_argument(
+        "--start_recording",
+        action="store_true",
+        help="Start the traversal recorder immediately instead of opening in paused mode",
+    )
+    parser.add_argument(
+        "--max_captures",
+        type=int,
+        help="Optional limit on the number of sampled reference frames",
+    )
+    parser.add_argument(
+        "--min_captures",
+        type=int,
+        default=5,
+        help="Minimum number of sampled frames required before a live map can be built",
+    )
+    parser.add_argument(
+        "--capture_window_name",
+        type=str,
+        default="Live VPR Map Recorder",
+        help="OpenCV window title used during live reference recording",
+    )
+    parser.add_argument(
+        "--recursive",
+        action="store_true",
+        help="Recursively index reference images during map building",
+    )
+    parser.add_argument(
+        "--use_video_for_live_build",
+        action="store_true",
+        help="Use an existing video from --video instead of recording a new traversal for build_live_map",
+    )
+    parser.add_argument(
+        "--hide_top_k",
+        action="store_true",
+        help="Hide the top-k reference preview panel at startup",
+    )
+    parser.add_argument(
+        "--mirror",
+        action="store_true",
+        help="Mirror the displayed live view for easier webcam use",
+    )
+    parser.add_argument(
+        "--output_video",
+        type=str,
+        help="Optional path for saving the annotated live/video session",
+    )
+    parser.add_argument(
+        "--snapshot_dir",
+        type=str,
+        default="artifacts/live_captures",
+        help="Directory for frames saved with the 's' key",
+    )
+    parser.add_argument(
+        "--window_name",
+        type=str,
+        default="Live VPR",
+        help="OpenCV window title",
+    )
+    return parser
+
+
+def main() -> None:
+    parser = build_parser()
+    args = parser.parse_args()
+    args.mode = normalize_mode(args.mode)
+
+    if args.mode == "build_map":
+        build_map(args)
+        return
+    if args.mode == "build_live_map":
+        if args.use_video_for_live_build and not args.video:
+            raise ValueError("--video is required when using --use_video_for_live_build")
+        build_live_map(args, use_video=args.use_video_for_live_build)
+        return
+    if args.mode == "check_source":
+        check_source(args, use_video=bool(args.video))
+        return
+    if args.mode == "list_sources":
+        list_sources(args)
+        return
+    if args.mode == "save_source_alias":
+        save_source_alias_command(args)
+        return
+    if args.mode == "list_source_aliases":
+        list_source_aliases_command()
+        return
+    if args.mode == "delete_source_alias":
+        delete_source_alias_command(args)
+        return
+    if args.mode == "live":
+        run_online(args, use_video=False)
+        return
+    if args.mode == "video":
         if not args.video:
-            print("ERROR: --video required for video_test mode")
-            return
-        if not vpr.load_database(args.db_path):
-            return
-        vpr.run_video_test(args.video, threshold=args.threshold,
-                          output_video=args.output_video)
+            raise ValueError("--video is required in video mode")
+        run_online(args, use_video=True)
+        return
 
-    elif args.mode == 'batch_eval':
-        if not args.query_dir:
-            print("ERROR: --query_dir required for batch_eval mode")
-            return
-        if not vpr.load_database(args.db_path):
-            return
-        vpr.run_batch_eval(args.query_dir, threshold=args.threshold,
-                          gt_tolerance=args.gt_tolerance)
+    raise ValueError(f"Unsupported mode: {args.mode}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -1,0 +1,14 @@
+Campus Dataset VPR Test Results
+======================================================================
+
+Descriptor: CosPlace
+Database images: 50
+Query images: 64
+Queries with matches: 33
+Queries without matches (-npm): 31
+
+AUC: 0.470
+R@100P: 0.030
+R@1: 0.727
+R@5: 1.000
+R@10: 1.000

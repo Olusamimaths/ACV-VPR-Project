@@ -53,9 +53,12 @@ setup(name='vpr_tutorial',
       keywords=[
           'python', 'place recognition', 'image retrieval', 'computer vision', 'robotics'
       ],
-      scripts=['demo.py'],
+      scripts=['demo.py', 'live_vpr_test.py'],
       entry_points={
-        'console_scripts': ['vpr-tutorial-demo=demo:main',],
+        'console_scripts': [
+            'vpr-tutorial-demo=demo:main',
+            'vpr-tutorial-live=live_vpr_test:main',
+        ],
       },
     #   package_data={'': ['configs/*.ini', 'dataset_gt_files/*.npz', 'example_images/*',
     #                      'output_features/.hidden', 'pretrained_models/.hidden', 'results/.hidden',
