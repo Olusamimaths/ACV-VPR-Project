@@ -25,12 +25,13 @@ class LiveDisplay:
         result_age_ms: float = 0.0,
         process_fps: float | None = None,
         inference_active: bool = True,
+        inference_index: int | None = None,
     ) -> np.ndarray:
         cv2 = _import_cv2()
         display = frame_bgr.copy()
         height, width = display.shape[:2]
 
-        cv2.rectangle(display, (0, 0), (width, 92), (0, 0, 0), -1)
+        cv2.rectangle(display, (0, 0), (width, 118), (0, 0, 0), -1)
 
         if result is None and not inference_active:
             status_color = (0, 170, 255)
@@ -66,6 +67,25 @@ class LiveDisplay:
             (180, 180, 180),
             1,
         )
+        if inference_index is not None:
+            cv2.putText(
+                display,
+                f"inference #{inference_index}",
+                (12, 92),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.45,
+                (180, 180, 180),
+                1,
+            )
+        cv2.putText(
+            display,
+            "controls: i start/pause  q quit  s save frame  t top-k  +/- threshold",
+            (12, 110),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.42,
+            (180, 180, 180),
+            1,
+        )
 
         if result is not None:
             self._draw_best_match(display, result, width)
@@ -94,7 +114,7 @@ class LiveDisplay:
         cv2 = _import_cv2()
         height, width = display.shape[:2]
         panel_height = 112
-        panel_top = max(92, height - panel_height)
+        panel_top = max(118, height - panel_height)
 
         cv2.rectangle(display, (0, panel_top), (width, height), (24, 24, 24), -1)
         cv2.putText(display, "Top matches", (12, panel_top + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (220, 220, 220), 1)

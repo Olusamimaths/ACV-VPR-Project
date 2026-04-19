@@ -357,6 +357,8 @@ The live viewer opens with inference paused by default.
 - press `i` to start inference
 - press `i` again to pause inference
 - use `--start_inference` if you want the old immediate-start behavior
+- the controls are shown directly on the live screen
+- an annotated image is saved after each inference by default
 
 ### Bash Launcher
 
@@ -420,6 +422,18 @@ python live_vpr_test.py \
 
 Brief explanation:
 Runs live localization from the saved alias `phone` and starts inference immediately instead of opening paused.
+
+```bash
+python live_vpr_test.py \
+  --mode live \
+  --map_path artifacts/live_maps/campus_day_live.npz \
+  --source phone \
+  --process_fps 2.0 \
+  --inference_stats_dir artifacts/inference_stats/phone_live
+```
+
+Brief explanation:
+Runs live localization and saves an annotated image after every inference into the chosen directory.
 
 ```bash
 python live_vpr_test.py \

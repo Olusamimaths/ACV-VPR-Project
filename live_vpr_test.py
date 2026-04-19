@@ -346,6 +346,9 @@ def run_online(args: argparse.Namespace, use_video: bool = False) -> None:
     inference_results = []
     snapshot_dir = Path(args.snapshot_dir).expanduser().resolve()
     snapshot_dir.mkdir(parents=True, exist_ok=True)
+    inference_stats_dir = Path(args.inference_stats_dir).expanduser().resolve()
+    if args.save_inference_images:
+        inference_stats_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         frame_source.open()
@@ -397,9 +400,19 @@ def run_online(args: argparse.Namespace, use_video: bool = False) -> None:
                 result_age_ms=result_age_ms,
                 process_fps=args.process_fps,
                 inference_active=inference_active,
+                inference_index=len(inference_results) if inference_results else None,
             )
             if args.mirror:
                 rendered = cv2.flip(rendered, 1)
+
+            if should_run_inference and args.save_inference_images and last_result is not None:
+                save_inference_image(
+                    rendered=rendered,
+                    inference_result=last_result,
+                    inference_index=len(inference_results),
+                    threshold=localizer.threshold,
+                    output_dir=inference_stats_dir,
+                )
 
             if writer is None and args.output_video:
                 writer = create_video_writer(args.output_video, rendered.shape)
@@ -429,6 +442,8 @@ def run_online(args: argparse.Namespace, use_video: bool = False) -> None:
                 print(f"Threshold: {localizer.threshold:.2f}")
 
         print_summary(inference_results, localizer.threshold, frame_count, args.process_fps)
+        if args.save_inference_images:
+            print(f"Inference images saved to: {inference_stats_dir}")
         if args.output_video:
             print(f"Annotated output saved to {Path(args.output_video).expanduser().resolve()}")
     finally:
@@ -472,6 +487,24 @@ def print_summary(results, threshold: float, displayed_frames: int | None = None
     print(f"Best-score mean/median: {scores.mean():.3f} / {np.median(scores):.3f}")
     print(f"Best-score min/max: {scores.min():.3f} / {scores.max():.3f}")
     print(f"Latency mean/median: {latencies.mean():.1f}ms / {np.median(latencies):.1f}ms")
+
+
+def save_inference_image(
+    rendered,
+    inference_result,
+    inference_index: int,
+    threshold: float,
+    output_dir: Path,
+) -> None:
+    cv2 = _import_cv2()
+    safe_score = f"{inference_result.best_score:.3f}".replace("-", "neg")
+    label = "match" if inference_result.recognized else "unknown"
+    filename = (
+        f"inference_{inference_index:05d}_{label}_"
+        f"score_{safe_score}_th_{threshold:.2f}.jpg"
+    )
+    output_path = output_dir / filename
+    cv2.imwrite(str(output_path), rendered)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -677,6 +710,19 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         help="Optional path for saving the annotated live/video session",
     )
+    parser.add_argument(
+        "--inference_stats_dir",
+        type=str,
+        default="artifacts/inference_stats",
+        help="Directory where annotated images are saved after each inference",
+    )
+    parser.add_argument(
+        "--no_save_inference_images",
+        dest="save_inference_images",
+        action="store_false",
+        help="Disable saving an annotated image after each inference",
+    )
+    parser.set_defaults(save_inference_images=True)
     parser.add_argument(
         "--snapshot_dir",
         type=str,

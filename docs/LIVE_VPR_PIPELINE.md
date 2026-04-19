@@ -156,6 +156,25 @@ The live viewer opens with inference paused by default.
 - press `i` again to pause inference
 - pass `--start_inference` if you want inference to begin immediately
 
+### What Is Used During Live Inference
+
+The live phase does not compute the offline evaluation metrics such as:
+
+- AUC
+- precision-recall curves
+- Recall@K
+- R@100P
+
+Instead, the online decision uses lightweight runtime signals:
+
+- top-1 cosine similarity score
+- thresholded recognition decision
+- top-k ranked matches
+- descriptor extraction latency
+- result age in milliseconds
+
+These are the quantities shown in the live overlay and used during the live session.
+
 If your phone appears as a virtual webcam, use another device index:
 
 ```bash
@@ -187,6 +206,8 @@ The live pipeline no longer needs to run inference on every displayed frame.
 - localization only runs at `--process_fps`
 - the most recent localization result is reused between inference steps
 - the overlay shows the age of the current result in milliseconds
+- the overlay shows the live controls directly on screen
+- an annotated image is saved after each inference by default
 
 This is usually better for laptop and phone-webcam testing because:
 
@@ -246,6 +267,10 @@ python live_vpr_test.py --mode live --source phone --map_path artifacts/live_map
   Number of best reference matches shown in the overlay.
 - `--process_fps`
   Localization cadence during live or video runtime.
+- `--inference_stats_dir`
+  Directory for annotated images saved after each inference.
+- `--no_save_inference_images`
+  Disable the default behavior of saving an annotated image after every inference.
 - `--mirror`
   Mirror the live display for a more natural webcam experience.
 - `--output_video`

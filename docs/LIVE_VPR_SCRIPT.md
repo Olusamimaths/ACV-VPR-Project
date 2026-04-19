@@ -78,6 +78,8 @@ bash scripts/live_vpr_cli.sh live --source 0 --mirror
 
 The live viewer opens with inference paused by default. Press `i` to start or pause inference. If you want it to start immediately, pass `--start_inference`.
 
+By default, the live pipeline also saves an annotated image after each inference. Use `--no_save_inference_images` if you want to disable that behavior.
+
 ### `video`
 
 Run localization on a recorded query video.
