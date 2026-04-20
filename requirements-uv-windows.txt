@@ -1,0 +1,19 @@
+# Windows/uv-friendly dependency set for this repository.
+# PatchNetVLAD pulls in faiss, which does not provide cp310 Windows wheels on PyPI.
+
+ipywidgets==8.0.6
+matplotlib==3.7.1
+numpy==1.24.3
+opencv-python==4.10.0.84
+Pillow==9.5.0
+scipy==1.9.1
+setuptools==67.7.2
+scikit_image==0.19.3
+tensorflow==2.11.1
+tensorflow_hub==0.12.0
+torch==2.0.0
+torchvision==0.15.1
+tqdm==4.65.0
+
+# Optional outside Windows on platforms where PatchNetVLAD/faiss can be resolved.
+patchnetvlad==0.1.7; platform_system != "Windows"
