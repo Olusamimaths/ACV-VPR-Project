@@ -1,0 +1,810 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{listings}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,shapes.geometric}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  urlcolor=blue!50!black
+}
+
+\definecolor{codebg}{RGB}{247,248,250}
+\definecolor{boxblue}{RGB}{224,236,255}
+\definecolor{boxgreen}{RGB}{226,245,232}
+\definecolor{boxorange}{RGB}{255,241,224}
+\definecolor{boxgray}{RGB}{242,242,242}
+\definecolor{accent}{RGB}{34,85,150}
+
+\lstdefinestyle{repo}{
+  backgroundcolor=\color{codebg},
+  basicstyle=\ttfamily\small,
+  frame=single,
+  framesep=6pt,
+  rulecolor=\color{black!15},
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  breaklines=true
+}
+
+\newcommand{\file}[1]{\texttt{#1}}
+\newcommand{\step}[1]{\textbf{#1}}
+
+\title{\textbf{VPR Tutorial Architecture Guide}\\[4pt]
+A Practical Codebase Walkthrough for New Developers}
+\author{Project Documentation}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section*{Purpose}
+This document is a practical onboarding guide to the current codebase. It is written for a junior developer who wants to understand:
+
+\begin{itemize}[leftmargin=*]
+  \item where the code starts,
+  \item how the original benchmark pipeline and the newer live pipeline relate,
+  \item which files are responsible for which parts of the system,
+  \item and where to make changes when extending the project.
+\end{itemize}
+
+This guide is intentionally tutorial-style: it explains the important flow first, then tours the key files with short code snippets and commentary.
+
+\section{Big Picture}
+The repository now has two production-relevant paths that share the same VPR idea.
+
+\begin{itemize}[leftmargin=*]
+  \item \step{Benchmark path:} load a dataset, extract descriptors, compute a similarity matrix, apply matching, then compute metrics and visualizations.
+  \item \step{Live path:} build a reusable reference map, then localize camera frames or video frames against that map in real time.
+\end{itemize}
+
+\begin{figure}[H]
+\centering
+\resizebox{0.98\textwidth}{!}{%
+\begin{tikzpicture}[
+  node distance=8mm and 8mm,
+  box/.style={draw, rounded corners, align=center, minimum width=36mm, minimum height=11mm, fill=boxgray},
+  arrow/.style={-{Latex[length=2.5mm]}, thick}
+]
+\node[box, fill=boxblue] (datasets) {Dataset loaders\\\file{datasets/load\_dataset.py}};
+\node[box, fill=boxgreen, right=of datasets] (features) {Descriptor extraction\\\file{feature\_extraction/}};
+\node[box, fill=boxorange, right=of features] (matching) {Matching + metrics\\\file{matching/}, \file{evaluation/}};
+
+\node[box, fill=boxblue, below=14mm of datasets] (capture) {Capture / sources\\\file{live\_vpr/sources.py}};
+\node[box, fill=boxgreen, right=of capture] (mapbuild) {Map building + storage\\\file{live\_vpr/offline.py}, \file{live\_vpr/database.py}};
+\node[box, fill=boxorange, right=of mapbuild] (online) {Online localization + UI\\\file{live\_vpr/online.py}, \file{live\_vpr/ui.py}};
+
+\draw[arrow] (datasets) -- node[above, font=\small] {benchmark path} (features);
+\draw[arrow] (features) -- (matching);
+
+\draw[arrow] (capture) -- node[above, font=\small] {live path} (mapbuild);
+\draw[arrow] (mapbuild) -- (online);
+
+\node[draw, rounded corners, fit=(datasets) (features) (matching), inner sep=5pt, label=above:{\textbf{Benchmark evaluation pipeline}}] {};
+\node[draw, rounded corners, fit=(capture) (mapbuild) (online), inner sep=5pt, label=below:{\textbf{Live deployment pipeline}}] {};
+\end{tikzpicture}
+}
+\caption{Repository overview: two main paths share descriptor extraction ideas, but only the benchmark path computes evaluation metrics during runtime.}
+\end{figure}
+
+\section{Where To Start Reading}
+If you are new to the project, read these files in this order:
+
+\begin{enumerate}[leftmargin=*]
+  \item \file{demo.py}
+  \item \file{datasets/load\_dataset.py}
+  \item \file{matching/matching.py}
+  \item \file{evaluation/metrics.py}
+  \item \file{test\_campus\_dataset.py}
+  \item \file{live\_vpr\_test.py}
+  \item the modules under \file{live\_vpr/}
+\end{enumerate}
+
+This order is useful because it teaches the simple benchmark flow first and then the more modular live system.
+
+\section{Architecture Diagrams}
+
+\subsection{Benchmark Flow}
+\begin{figure}[H]
+\centering
+\resizebox{0.98\textwidth}{!}{%
+\begin{tikzpicture}[
+  node distance=8mm and 8mm,
+  box/.style={draw, rounded corners, align=center, minimum width=28mm, minimum height=10mm, fill=boxblue},
+  arrow/.style={-{Latex[length=2.5mm]}, thick}
+]
+\node[box] (entry) {\file{demo.py}\\or \file{test\_campus\_dataset.py}};
+\node[box, right=of entry] (dataset) {Load dataset\\images + GT matrices};
+\node[box, right=of dataset, fill=boxgreen] (desc) {Extract descriptors\\(global / patch)};
+\node[box, right=of desc] (sim) {Similarity matrix $S$\\cosine or local matcher};
+\node[box, right=of sim, fill=boxorange] (match) {Matching\\$M_1$, $M_2$};
+\node[box, below=of sim, minimum width=42mm, fill=boxgray] (eval) {PR curve, AUC, $R@100P$, $R@K$\\and TP/FP visualization};
+
+\draw[arrow] (entry) -- (dataset);
+\draw[arrow] (dataset) -- (desc);
+\draw[arrow] (desc) -- (sim);
+\draw[arrow] (sim) -- (match);
+\draw[arrow] (match) |- (eval);
+\draw[arrow] (sim) -- (eval);
+\end{tikzpicture}
+}
+\caption{The benchmark path computes a full similarity matrix and then evaluates it against ground truth.}
+\end{figure}
+
+\subsection{Live Flow}
+\begin{figure}[H]
+\centering
+\resizebox{0.98\textwidth}{!}{%
+\begin{tikzpicture}[
+  node distance=8mm and 8mm,
+  box/.style={draw, rounded corners, align=center, minimum width=28mm, minimum height=10mm, fill=boxgreen},
+  io/.style={draw, rounded corners, align=center, minimum width=28mm, minimum height=10mm, fill=boxgray},
+  arrow/.style={-{Latex[length=2.5mm]}, thick}
+]
+\node[io] (source) {camera index / alias / URL / video};
+\node[box, right=of source] (record) {optional traversal recording\\\file{live\_vpr/capture.py}};
+\node[box, right=of record] (sample) {sample frames from video\\\file{sample\_video\_to\_frames}};
+\node[box, right=of sample] (map) {build \file{ReferenceMap} (.npz)\\\file{live\_vpr/offline.py}};
+\node[box, below=of map] (online) {localize each frame\\\file{live\_vpr/online.py}};
+\node[box, left=of online, minimum width=34mm, fill=boxorange] (ui) {overlay + report export\\\file{live\_vpr/ui.py}};
+
+\draw[arrow] (source) -- (record);
+\draw[arrow] (record) -- (sample);
+\draw[arrow] (sample) -- (map);
+\draw[arrow] (map) -- (online);
+\draw[arrow] (source) |- (online);
+\draw[arrow] (online) -- (ui);
+\end{tikzpicture}
+}
+\caption{The live path builds a reusable map once and then performs repeated single-frame localization against it.}
+\end{figure}
+
+\subsection{Module-Level Ownership}
+\begin{figure}[H]
+\centering
+\resizebox{0.98\textwidth}{!}{%
+\begin{tikzpicture}[
+  node distance=9mm and 9mm,
+  box/.style={draw, rounded corners, align=left, minimum width=45mm, minimum height=10mm, fill=white},
+  main/.style={draw, rounded corners, align=center, minimum width=45mm, minimum height=12mm, fill=boxblue},
+  arrow/.style={-{Latex[length=2.5mm]}, thick}
+]
+\node[main] (cli) {\file{live\_vpr\_test.py}\\CLI orchestration};
+\node[box, below left=of cli, fill=boxgreen] (offline) {\file{live\_vpr/offline.py}\\map build from folder or sampled video frames};
+\node[box, below=of cli, fill=boxgreen] (capture) {\file{live\_vpr/capture.py}\\record traversal + sample timestamps};
+\node[box, below right=of cli, fill=boxgreen] (online) {\file{live\_vpr/online.py}\\descriptor + similarity + threshold decision};
+\node[box, below=of capture, fill=boxorange] (db) {\file{live\_vpr/database.py}\\ReferenceMap schema and .npz serialization};
+\node[box, left=of db, fill=boxorange] (sources) {\file{live\_vpr/sources.py}\\source probing, aliases, and OpenCV wrappers};
+\node[box, right=of db, fill=boxorange] (ui) {\file{live\_vpr/ui.py}\\real-time HUD and saved inference report canvases};
+
+\draw[arrow] (cli) -- (offline);
+\draw[arrow] (cli) -- (capture);
+\draw[arrow] (cli) -- (online);
+\draw[arrow] (offline) -- (db);
+\draw[arrow] (capture) -- (db);
+\draw[arrow] (sources) -- (capture);
+\draw[arrow] (sources) |- (online);
+\draw[arrow] (db) -- (online);
+\draw[arrow] (online) -- (ui);
+\end{tikzpicture}
+}
+\caption{Module-level view of the live system. \file{live\_vpr\_test.py} coordinates the workflow; the logic lives in smaller modules.}
+\end{figure}
+
+\subsection{Artifacts and Persistence Flow}
+\begin{figure}[H]
+\centering
+\resizebox{0.98\textwidth}{!}{%
+\begin{tikzpicture}[
+  node distance=8mm and 9mm,
+  box/.style={draw, rounded corners, align=center, minimum width=37mm, minimum height=10mm, fill=boxgray},
+  arrow/.style={-{Latex[length=2.5mm]}, thick}
+]
+\node[box, fill=boxblue] (day) {Reference images\\\file{custom\_dataset/day\_images}};
+\node[box, right=of day, fill=boxgreen] (mapnpz) {Saved map artifact\\\file{artifacts/live\_maps/*.npz}};
+\node[box, right=of mapnpz, fill=boxorange] (runtime) {Runtime localization\\\file{live\_vpr/online.py}};
+
+\node[box, below=of day] (video) {Traversal video\\\file{artifacts/reference\_videos/*.mp4}};
+\node[box, right=of video] (frames) {Sampled frames\\\file{artifacts/reference\_captures/*}};
+\node[box, right=of frames] (reports) {Inference outputs\\\file{artifacts/inference\_stats/*}\\\file{artifacts/live\_captures/*}};
+
+\draw[arrow] (day) -- (mapnpz);
+\draw[arrow] (mapnpz) -- (runtime);
+\draw[arrow] (video) -- (frames);
+\draw[arrow] (frames) |- (mapnpz);
+\draw[arrow] (runtime) -- (reports);
+\end{tikzpicture}
+}
+\caption{Important filesystem artifacts. The live system relies on persisted map files rather than repeatedly scanning raw folders during runtime.}
+\end{figure}
+
+\clearpage
+\section{Code Tour}
+
+\subsection{Execution Modes in \file{live\_vpr\_test.py}}
+The live CLI has grown into a mode-based orchestrator. This is the high-level contract for each mode:
+
+\begin{longtable}{p{0.18\linewidth} p{0.36\linewidth} p{0.38\linewidth}}
+\toprule
+\textbf{Mode} & \textbf{Primary modules} & \textbf{Output / side effect} \\
+\midrule
+\file{build\_map} & \file{live\_vpr/offline.py}, \file{live\_vpr/database.py} & Builds a map from image directory and saves \file{*.npz}. \\
+\file{build\_live\_map} & \file{live\_vpr/capture.py}, \file{live\_vpr/offline.py} & Records traversal video (or reuses video), samples frames, then writes map. \\
+\file{live} & \file{live\_vpr/sources.py}, \file{live\_vpr/online.py}, \file{live\_vpr/ui.py} & Runs camera/stream localization with interactive controls. \\
+\file{video} & \file{live\_vpr/online.py}, \file{live\_vpr/ui.py} & Runs localization on prerecorded video stream. \\
+\file{check\_source} & \file{live\_vpr/sources.py} & Probes one source and prints backend/frame metadata. \\
+\file{list\_sources} & \file{live\_vpr/sources.py} & Scans camera indices, optionally saves preview frames. \\
+\file{alias\_modes} (save/list/delete) & \file{live\_vpr/sources.py} & Persists aliases in \file{artifacts/live\_vpr\_sources.json}. \\
+\bottomrule
+\end{longtable}
+
+\subsection{\file{demo.py}}
+\textbf{What it does.} This is the original tutorial entrypoint. It demonstrates the full benchmark evaluation loop on the built-in datasets.
+
+\textbf{Why it matters.} If you understand this file, you understand the basic VPR idea used everywhere else in the repo.
+
+\begin{lstlisting}[style=repo, language=Python, caption={Core benchmark pattern in \file{demo.py}}]
+imgs_db, imgs_q, GThard, GTsoft = dataset.load()
+
+db_D_holistic = feature_extractor.compute_features(imgs_db)
+q_D_holistic = feature_extractor.compute_features(imgs_q)
+
+db_D_holistic = db_D_holistic / np.linalg.norm(db_D_holistic, axis=1, keepdims=True)
+q_D_holistic = q_D_holistic / np.linalg.norm(q_D_holistic, axis=1, keepdims=True)
+S = np.matmul(db_D_holistic, q_D_holistic.transpose())
+\end{lstlisting}
+
+\textbf{How it works.} The file loads images, converts them into descriptors, normalizes those descriptors, and computes the similarity matrix $S$. Everything later in the benchmark path depends on $S$.
+
+\subsection{\file{datasets/load\_dataset.py}}
+\textbf{What it does.} This file owns dataset loading and ground-truth generation for:
+
+\begin{itemize}[leftmargin=*]
+  \item GardensPoint
+  \item StLucia
+  \item SFU
+  \item the custom \texttt{CampusDataset} (day/night campus data)
+\end{itemize}
+
+\textbf{Most useful idea.} All loaders return the same interface: reference images, query images, strict ground truth, and soft ground truth.
+
+\begin{lstlisting}[style=repo, language=Python, caption={Shared dataset contract}]
+class Dataset(ABC):
+    @abstractmethod
+    def load(self) -> Tuple[List[np.ndarray], List[np.ndarray], np.ndarray, np.ndarray]:
+        pass
+\end{lstlisting}
+
+\textbf{How it works.} This shared contract is what lets \file{demo.py} and \file{test\_campus\_dataset.py} swap datasets without changing the rest of the evaluation code.
+
+\textbf{Important current behavior for the campus set.}
+\begin{itemize}[leftmargin=*]
+  \item Database images come from \file{custom\_dataset/day\_images}.
+  \item Query images come from \file{custom\_dataset/night\_images}.
+  \item Any query with \texttt{-npm}, \texttt{npm*}, or \texttt{PXL\_*} is treated as no-perfect-match and does not receive a hard GT positive.
+  \item Soft GT is created by vertical dilation of hard GT with a 5x1 kernel (tolerance in nearby day indices).
+\end{itemize}
+
+\begin{lstlisting}[style=repo, language=Python, caption={Campus ground-truth logic}]
+if '-npm' in night_name.lower() or night_name.startswith('npm'):
+    continue
+if night_name.startswith('PXL_'):
+    continue
+
+match = re.match(r'(image\d+)', night_name)
+if match:
+    base_name = match.group(1)
+    if base_name in day_names:
+        i = day_names.index(base_name)
+        GThard[i, j] = True
+\end{lstlisting}
+
+\textbf{How it works.} The campus loader uses filenames to decide which night images truly match day images and which should be treated as no-match queries.
+
+\subsection{\file{matching/matching.py}}
+\textbf{What it does.} This file converts similarity scores into binary match decisions.
+
+\begin{lstlisting}[style=repo, language=Python, caption={Two core matching strategies}]
+def best_match_per_query(S: np.ndarray) -> np.ndarray:
+    i = np.argmax(S, axis=0)
+    j = np.int64(range(len(i)))
+    M = np.zeros_like(S, dtype='bool')
+    M[i, j] = True
+    return M
+
+def thresholding(S: np.ndarray, thresh: Union[str, float]) -> np.ndarray:
+    if thresh == 'auto':
+        mu = np.median(S)
+        sig = np.median(np.abs(S - mu)) / 0.675
+        thresh = norm.ppf(1 - 1e-6, loc=mu, scale=sig)
+    return S >= thresh
+\end{lstlisting}
+
+\textbf{How it works.} One strategy always chooses exactly one match per query. The other uses a threshold so a query can have zero, one, or many matches depending on confidence.
+
+\subsection{\file{evaluation/metrics.py}}
+\textbf{What it does.} This file computes the benchmark metrics.
+
+\begin{lstlisting}[style=repo, language=Python, caption={How PR curves are built}]
+for i in np.linspace(startV, endV, n_thresh):
+    B = S >= i
+    TP = np.count_nonzero(GT & B)
+    FP = np.count_nonzero((~GT) & B)
+    P.append(TP / (TP + FP))
+    R.append(TP / GTP)
+\end{lstlisting}
+
+\textbf{How it works.} Instead of choosing one threshold once, the code sweeps across many thresholds and records precision and recall at each one. That produces the PR curve and the AUC.
+
+\subsection{\file{test\_campus\_dataset.py}}
+\textbf{What it does.} This file adapts the benchmark pipeline to the custom campus dataset.
+
+\textbf{Why it matters.} It shows how to add a custom dataset without rewriting the whole evaluation stack.
+
+\begin{lstlisting}[style=repo, language=Python, caption={Campus script follows the same flow as \file{demo.py}}]
+dataset = CampusDataset(destination=args.dataset_dir)
+imgs_db, imgs_q, GThard, GTsoft = dataset.load()
+
+db_D_holistic = feature_extractor.compute_features(imgs_db)
+q_D_holistic = feature_extractor.compute_features(imgs_q)
+S = np.matmul(db_D_holistic, q_D_holistic.transpose())
+\end{lstlisting}
+
+\textbf{How it works.} The structure is intentionally similar to \file{demo.py}. The biggest difference is the campus loader and the saved campus-specific output files.
+
+\subsection{\file{live\_vpr\_test.py}}
+\textbf{What it does.} This is the top-level CLI for the live pipeline.
+
+\textbf{Why it matters.} It does not implement most logic itself; it orchestrates the modules under \file{live\_vpr/}.
+
+\begin{lstlisting}[style=repo, language=Python, caption={The live CLI wires together modular components}]
+from live_vpr import (
+    LiveDisplay,
+    LiveLocalizer,
+    LiveReferenceRecorder,
+    MapBuildConfig,
+    MapBuilder,
+    OpenCVFrameSource,
+    load_reference_map,
+)
+\end{lstlisting}
+
+\textbf{How it works.} This file is best understood as the glue layer. If you want to add a new mode or a new CLI flag, this is where you start.
+
+\textbf{Current branch detail.} It now also includes:
+\begin{itemize}[leftmargin=*]
+  \item mode aliases for backward compatibility (for example, \texttt{build\_db} $\rightarrow$ \texttt{build\_map}),
+  \item source alias persistence commands,
+  \item optional per-inference report image export,
+  \item configurable inference cadence via \texttt{--process\_fps}.
+\end{itemize}
+
+\subsection{\file{live\_vpr/offline.py}}
+\textbf{What it does.} This file owns reference-map creation from images.
+
+\begin{lstlisting}[style=repo, language=Python, caption={Core map-building loop}]
+images = [_load_rgb_image(path, target_size) for path in image_paths]
+descriptors = compute_global_descriptors(self.extractor, images)
+descriptors = normalize_descriptors(descriptors)
+reference_map = ReferenceMap(
+    descriptors=descriptors,
+    image_paths=[str(path.resolve()) for path in image_paths],
+    metadata=metadata,
+)
+\end{lstlisting}
+
+\textbf{How it works.} A map is just a normalized descriptor matrix plus metadata and image paths. This is the main transition from ``folder of images'' to ``runtime-ready live map''.
+
+\subsection{\file{live\_vpr/database.py}}
+\textbf{What it does.} This file defines the saved map format and serialization.
+
+\begin{lstlisting}[style=repo, language=Python, caption={ReferenceMap is the live system's central data object}]
+@dataclass
+class ReferenceMap:
+    descriptors: np.ndarray
+    image_paths: list[str]
+    metadata: dict[str, Any]
+\end{lstlisting}
+
+\textbf{How it works.} The live runtime does not read raw folders directly. It loads this object from disk and then does similarity lookup against \texttt{descriptors}.
+
+\subsection{\file{live\_vpr/capture.py}}
+\textbf{What it does.} This file owns traversal recording and frame sampling.
+
+\begin{lstlisting}[style=repo, language=Python, caption={Recording first, building later}]
+if recording:
+    writer.write(frame)
+    frame_count += 1
+
+status_frame = self._render_overlay(frame, recording, frame_count)
+\end{lstlisting}
+
+\begin{lstlisting}[style=repo, language=Python, caption={Sampling a traversal video into reference frames}]
+should_sample = current_time_s + (0.5 / source_fps) >= next_sample_time_s
+if should_sample:
+    cv2.imwrite(str(output_path), frame)
+    saved_paths.append(str(output_path))
+    next_sample_time_s += sample_interval_s
+\end{lstlisting}
+
+\textbf{How it works.} Recording and sampling are intentionally separate. That makes it easy to rebuild a map later with a different sampling rate.
+
+\subsection{\file{live\_vpr/online.py}}
+\textbf{What it does.} This file owns the runtime localization step.
+
+\begin{lstlisting}[style=repo, language=Python, caption={The live localization core}]
+descriptor = compute_global_descriptors(self.extractor, [rgb_image])
+descriptor = descriptor / (np.linalg.norm(descriptor, axis=1, keepdims=True) + 1e-8)
+similarities = (self.reference_map.descriptors @ descriptor.T).reshape(-1)
+top_indices = np.argsort(similarities)[-top_k:][::-1]
+\end{lstlisting}
+
+\textbf{How it works.} The live phase still performs VPR in the same conceptual way as the benchmark path. The difference is that it localizes one frame at a time instead of evaluating an entire query set.
+
+\subsection{\file{live\_vpr/sources.py}}
+\textbf{What it does.} This file abstracts webcams, stream URLs, and source aliases.
+
+\begin{lstlisting}[style=repo, language=Python, caption={Alias resolution happens before capture opens}]
+def parse_capture_source(source: str | int, aliases_path: str | None = None) -> str | int:
+    aliases = load_source_aliases(aliases_path)
+    while source in aliases and source not in visited:
+        source = aliases[source].strip()
+    return int(source) if source.isdigit() else source
+\end{lstlisting}
+
+\textbf{How it works.} This lets the rest of the pipeline treat \texttt{0}, \texttt{phone}, and \texttt{http://...} as different ways of naming the same idea: a capture source.
+
+\subsection{\file{live\_vpr/ui.py}}
+\textbf{What it does.} This file owns the live overlay and the saved per-inference report images.
+
+\begin{lstlisting}[style=repo, language=Python, caption={The UI has separate live and export render paths}]
+display = LiveDisplay(reference_map=reference_map, show_top_k=not args.hide_top_k)
+rendered = display.render(...)
+export_canvas = display.render_inference_report(...)
+\end{lstlisting}
+
+\textbf{How it works.} The live overlay is optimized for real-time display, while the saved report image is optimized for readability and documentation.
+
+\subsection{\file{scripts/live\_vpr\_cli.sh}}
+\textbf{What it does.} This is a thin shell wrapper around \file{live\_vpr\_test.py}.
+
+\begin{lstlisting}[style=repo, language=bash, caption={The launcher maps short commands to Python modes}]
+record-map)
+  exec "$PYTHON_BIN" "$ENTRYPOINT" \
+    --mode build_live_map \
+    --descriptor "$DEFAULT_DESCRIPTOR" \
+    --map_path "$DEFAULT_MAP_PATH" \
+    --source "$DEFAULT_SOURCE" \
+    --recording_path "$DEFAULT_RECORDING_PATH" \
+    --capture_dir "$DEFAULT_CAPTURE_DIR" \
+    --sample_fps "$DEFAULT_SAMPLE_FPS" \
+    "$@"
+\end{lstlisting}
+
+\textbf{How it works.} The shell script does not contain VPR logic. It just shortens the commands and provides convenient environment-variable defaults.
+
+\section{Worked Example A: Benchmark Evaluation (10-image dry run)}
+This section is intentionally contrived. The goal is to make the evaluation math intuitive, not to mimic real descriptor distributions.
+
+\subsection{Setup}
+Assume:
+\begin{itemize}[leftmargin=*]
+  \item 10 database images: $D_1, D_2, \dots, D_{10}$ (day/reference),
+  \item 10 query images: $Q_1, Q_2, \dots, Q_{10}$ (night/query),
+  \item queries $Q_1$ to $Q_7$ have true matches,
+  \item queries $Q_8$ to $Q_{10}$ are no-perfect-match cases (similar to \texttt{-npm} behavior).
+\end{itemize}
+
+\subsection{Step 1: Build hard ground truth \texorpdfstring{$GT_{hard}$}{GThard}}
+Here is the hard GT matrix (rows are database images, columns are queries):
+
+\begin{lstlisting}[style=repo, caption={Contrived hard GT matrix (1 = true match)}]
+          Q1 Q2 Q3 Q4 Q5 Q6 Q7 Q8 Q9 Q10
+D1         1  0  0  0  0  0  0  0  0   0
+D2         0  1  0  0  0  0  0  0  0   0
+D3         0  0  1  0  0  0  0  0  0   0
+D4         0  0  0  1  0  0  0  0  0   0
+D5         0  0  0  0  1  0  0  0  0   0
+D6         0  0  0  0  0  1  0  0  0   0
+D7         0  0  0  0  0  0  1  0  0   0
+D8         0  0  0  0  0  0  0  0  0   0
+D9         0  0  0  0  0  0  0  0  0   0
+D10        0  0  0  0  0  0  0  0  0   0
+\end{lstlisting}
+
+Interpretation:
+\begin{itemize}[leftmargin=*]
+  \item $Q_1$ matches only $D_1$, $Q_2$ matches only $D_2$, ..., $Q_7$ matches only $D_7$.
+  \item $Q_8$, $Q_9$, $Q_{10}$ have no true match.
+\end{itemize}
+
+\subsection{Step 2: Build soft ground truth \texorpdfstring{$GT_{soft}$}{GTsoft}}
+In this repository, soft GT is a dilated version of hard GT (for example, with a vertical kernel). Intuition:
+\begin{itemize}[leftmargin=*]
+  \item if $D_4$ is the strict match for $Q_4$,
+  \item soft GT may also mark nearby rows ($D_2$ to $D_6$) as acceptable overlap.
+\end{itemize}
+
+For this toy dry run, we focus metric interpretation on hard positives and use soft GT as an \emph{ignore band} for near-miss evaluations (same concept as \file{evaluation/metrics.py}).
+
+\subsection{Step 3: Descriptor extraction and similarity matrix \texorpdfstring{$S$}{S}}
+After descriptor extraction and normalization, suppose the key similarities are:
+
+\begin{longtable}{p{0.18\linewidth} p{0.26\linewidth} p{0.46\linewidth}}
+\toprule
+\textbf{Query} & \textbf{Best score} & \textbf{Interpretation} \\
+\midrule
+$Q_1$ & $S(D_1,Q_1)=0.93$ & Correct strong match \\
+$Q_2$ & $S(D_2,Q_2)=0.90$ & Correct strong match \\
+$Q_3$ & $S(D_3,Q_3)=0.88$ & Correct strong match \\
+$Q_4$ & $S(D_4,Q_4)=0.86$ & Correct strong match \\
+$Q_5$ & $S(D_5,Q_5)=0.84$ & Correct match, slightly weaker \\
+$Q_6$ & $S(D_6,Q_6)=0.82$ & Correct match, slightly weaker \\
+$Q_7$ & $S(D_7,Q_7)=0.80$ & Correct match, weaker but still right \\
+$Q_8$ & $S(D_3,Q_8)=0.81$ & False high-confidence match (no GT) \\
+$Q_9$ & $S(D_6,Q_9)=0.79$ & False high-confidence match (no GT) \\
+$Q_{10}$ & $S(D_2,Q_{10})=0.77$ & False high-confidence match (no GT) \\
+\bottomrule
+\end{longtable}
+
+\subsection{Step 4: Matching outputs}
+\textbf{Single-best-match} ($M_1$): choose argmax per query.
+
+\begin{itemize}[leftmargin=*]
+  \item Predictions: 10 total (one per query).
+  \item True positives: 7 (for $Q_1$..$Q_7$).
+  \item False positives: 3 (for $Q_8$..$Q_{10}$, which should be unmatched).
+  \item Precision $=7/10=0.70$.
+\end{itemize}
+
+\textbf{Thresholding} ($M_2$): mark all entries with $S \ge t$.
+
+\subsection{Step 5: Dry-run precision/recall at multiple thresholds}
+Let the number of ground-truth positives be $GTP=7$.
+
+\begin{longtable}{l c c c c}
+\toprule
+\textbf{Threshold $t$} & \textbf{TP} & \textbf{FP} & \textbf{Precision} & \textbf{Recall} \\
+\midrule
+$0.85$ & $4$ & $0$ & $4/(4+0)=1.00$ & $4/7=0.571$ \\
+$0.80$ & $7$ & $1$ & $7/(7+1)=0.875$ & $7/7=1.00$ \\
+$0.75$ & $7$ & $3$ & $7/(7+3)=0.70$ & $7/7=1.00$ \\
+\bottomrule
+\end{longtable}
+
+This is exactly what \file{createPR()} does conceptually: sweep thresholds from high to low, collect $(R,P)$ pairs, then plot the PR curve.
+
+\paragraph{How TP and FP are counted in each row (important).}
+For each threshold $t$, the algorithm first creates a binary prediction matrix
+$$
+B_t = (S \ge t)
+$$
+with the same shape as the ground-truth matrix. Then:
+$$
+TP = |GT \land B_t|, \qquad FP = |\neg GT \land B_t|
+$$
+where $|\cdot|$ means ``number of true entries.''
+
+In this toy setup, you can read each row as follows:
+\begin{itemize}[leftmargin=*]
+  \item \textbf{$t=0.85$:} only 4 true-match scores are above threshold, and no no-match query crosses threshold. So $TP=4$, $FP=0$.
+  \item \textbf{$t=0.80$:} all 7 true matches now pass threshold, but one no-match query also passes (a spurious high score). So $TP=7$, $FP=1$.
+  \item \textbf{$t=0.75$:} true matches remain 7, and now three no-match queries pass threshold. So $TP=7$, $FP=3$.
+\end{itemize}
+
+Lowering the threshold usually increases recall first, then starts to add false positives.
+
+\paragraph{Link to the actual code in this repository.}
+The benchmark implementation in \file{evaluation/metrics.py} performs this exact sequence at each threshold:
+\begin{lstlisting}[style=repo, language=Python, caption={Per-threshold counting logic used in createPR()}]
+B = S >= i
+TP = np.count_nonzero(GT & B)
+FP = np.count_nonzero((~GT) & B)
+P.append(TP / (TP + FP))
+R.append(TP / GTP)
+\end{lstlisting}
+
+\subsection{Step 6: AUC, \texorpdfstring{$R@100P$}{R@100P}, and \texorpdfstring{$R@K$}{R@K}}
+\begin{itemize}[leftmargin=*]
+  \item \textbf{AUC:} area under the PR curve. Larger is better because high precision is maintained across more recall levels.
+  \item \textbf{$R@100P$:} largest recall where precision is exactly 1.0. In this toy table, $R@100P \approx 0.571$ from $t=0.85$.
+  \item \textbf{$R@K$:} for each query with at least one true match, check whether the true database index appears in top-$K$ similarities.
+\end{itemize}
+
+\paragraph{Small intuitive descriptions for this project.}
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Precision:} ``When the system says match, how often is it correct?''
+  High precision matters when false alarms are expensive (for example, wrong place recognition).
+  \item \textbf{Recall:} ``Of all real matches that exist, how many did we recover?''
+  High recall matters when missing true places is expensive.
+  \item \textbf{AUC (PR-AUC):} single summary of the precision-recall tradeoff over many thresholds.
+  Better descriptor/matching pipelines keep precision high while recall grows, increasing AUC.
+  \item \textbf{$R@100P$:} best recall you can get while making \emph{no} false positives.
+  Good for safety-critical operating points.
+  \item \textbf{$R@K$:} ranking quality. If the correct place is in top-$K$, we count it as success.
+  Useful for retrieval interfaces and human-in-the-loop systems.
+\end{itemize}
+
+For this toy setup (assuming all matched queries contain their true pair within top-5):
+\begin{itemize}[leftmargin=*]
+  \item $R@1 = 7/7 = 1.0$,
+  \item $R@5 = 7/7 = 1.0$,
+  \item $R@10 = 7/7 = 1.0$.
+\end{itemize}
+
+The important nuance is that $R@K$ ignores no-match queries by design (same as \file{recallAtK()}), while PR-based metrics explicitly penalize false positives on no-match queries.
+
+\subsection{Intuition summary}
+\begin{itemize}[leftmargin=*]
+  \item $GT_{hard}$ defines strict correctness.
+  \item $GT_{soft}$ defines tolerance/ignore regions for near overlaps.
+  \item $S$ converts descriptors into comparable scores.
+  \item Matching strategy turns scores into decisions.
+  \item Evaluation checks how good those decisions are across operating points.
+\end{itemize}
+
+\section{Worked Example B: Live flow and database flow (contrived)}
+This dry run explains how map creation and frame-by-frame localization interact in practice.
+
+\subsection{Step 1: Build a tiny reference map}
+Assume 5 sampled reference frames:
+\begin{itemize}[leftmargin=*]
+  \item \file{ref\_0000.jpg} (library entrance)
+  \item \file{ref\_0001.jpg} (corridor turn)
+  \item \file{ref\_0002.jpg} (cafeteria front)
+  \item \file{ref\_0003.jpg} (engineering gate)
+  \item \file{ref\_0004.jpg} (parking corner)
+\end{itemize}
+
+\textbf{Offline pipeline} (\file{live\_vpr/offline.py} + \file{live\_vpr/database.py}):
+\begin{enumerate}[leftmargin=*]
+  \item Load and resize all 5 images to target size (for example, $640\times480$).
+  \item Extract global descriptors with chosen model (for example, CosPlace).
+  \item Normalize descriptor rows.
+  \item Store in \texttt{ReferenceMap\{descriptors, image\_paths, metadata\}}.
+  \item Serialize to \file{artifacts/live\_maps/campus\_tiny.npz}.
+\end{enumerate}
+
+Map artifact contents are conceptually:
+\begin{lstlisting}[style=repo, caption={Contrived ReferenceMap payload}]
+descriptors: shape (5, 512), float32, L2-normalized
+image_paths: [
+  ".../ref_0000.jpg", ".../ref_0001.jpg", ..., ".../ref_0004.jpg"
+]
+metadata: {
+  "descriptor": "CosPlace",
+  "target_size": [640, 480],
+  "num_images": 5,
+  "descriptor_dim": 512,
+  "created_utc": "..."
+}
+\end{lstlisting}
+
+\subsection{Step 2: Online localization for incoming frames}
+Assume threshold is $0.75$ and top-$k=3$.
+
+\textbf{Frame A} (actual location near library entrance):
+\begin{itemize}[leftmargin=*]
+  \item Similarities to map rows: $[0.91, 0.63, 0.44, 0.20, 0.11]$.
+  \item Best index: $0$ (\file{ref\_0000.jpg}), best score: $0.91$.
+  \item Since $0.91 \ge 0.75$, decision is \textbf{recognized}.
+\end{itemize}
+
+\textbf{Frame B} (challenging viewpoint / motion blur):
+\begin{itemize}[leftmargin=*]
+  \item Similarities: $[0.58, 0.62, 0.59, 0.57, 0.55]$.
+  \item Best index: $1$, best score: $0.62$.
+  \item Since $0.62 < 0.75$, decision is \textbf{unknown}.
+\end{itemize}
+
+\textbf{Frame C} (near engineering gate):
+\begin{itemize}[leftmargin=*]
+  \item Similarities: $[0.22, 0.30, 0.41, 0.83, 0.49]$.
+  \item Best index: $3$, best score: $0.83$.
+  \item Since $0.83 \ge 0.75$, decision is \textbf{recognized}.
+\end{itemize}
+
+\subsection{Step 2.5: What the live UI ``Score'' means}
+In live mode, the displayed score is the \textbf{maximum cosine similarity} between the current query-frame descriptor and all map descriptors:
+$$
+\mathrm{score} = \max_j\; (d_q^\top d_j)
+$$
+where $d_q$ is the normalized descriptor of the current frame and $d_j$ are normalized descriptors stored in the map.
+
+Interpretation in this project:
+\begin{itemize}[leftmargin=*]
+  \item Score close to $1.0$: very strong visual agreement with some reference place.
+  \item Mid score (for example, $0.55$ to $0.75$): uncertain/ambiguous match.
+  \item Low score: likely unknown place or severe appearance change.
+\end{itemize}
+
+Decision rule used online:
+\begin{itemize}[leftmargin=*]
+  \item if \texttt{score >= threshold}: show \textbf{MATCH} (recognized),
+  \item otherwise: show \textbf{UNKNOWN}.
+\end{itemize}
+
+So the live score is a \emph{runtime confidence signal}, not a full offline metric. Offline metrics (Precision/Recall/AUC/R@K) require dataset-level ground truth and are computed over many queries, while live score is per-frame and immediate.
+
+\subsection{Step 3: Where database flow and UI flow meet}
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Database flow}: persisted map file provides descriptors + metadata + image paths.
+  \item \textbf{Live flow}: each frame gets one descriptor, then one vector-matrix multiply against stored descriptors.
+  \item \textbf{UI flow}: renders decision state (MATCH/UNKNOWN), best match thumbnail, and top-$k$ panel from stored \texttt{image\_paths}.
+\end{itemize}
+
+So the runtime loop is:
+\begin{center}
+\fbox{\parbox{0.86\linewidth}{
+\centering
+load map once $\rightarrow$ process frame $\rightarrow$ compute similarities $\rightarrow$ threshold decision $\rightarrow$ visualize/export
+}}
+\end{center}
+
+\subsection{Intuition summary}
+\begin{itemize}[leftmargin=*]
+  \item The map is a compact searchable memory of known places.
+  \item Online localization is repeated nearest-neighbor search in descriptor space.
+  \item Threshold controls precision-recall tradeoff at runtime: higher threshold reduces false recognitions but increases unknowns.
+  \item Top-$k$ exists for operator confidence and debugging, even when only best match drives the binary decision.
+\end{itemize}
+
+\section{Extension Points}
+If you want to change something, start here:
+
+\begin{longtable}{p{0.28\linewidth} p{0.64\linewidth}}
+\toprule
+\textbf{Goal} & \textbf{File to edit first} \\
+\midrule
+Add a new dataset & \file{datasets/load\_dataset.py} \\
+Add a new descriptor & \file{feature\_extraction/} and \file{live\_vpr/extractors.py} \\
+Change benchmark metrics & \file{evaluation/metrics.py} \\
+Change match selection & \file{matching/matching.py} \\
+Change live map format & \file{live\_vpr/database.py} \\
+Change traversal recording & \file{live\_vpr/capture.py} \\
+Change live localization logic & \file{live\_vpr/online.py} \\
+Change overlays / saved report images & \file{live\_vpr/ui.py} \\
+Change camera or stream handling & \file{live\_vpr/sources.py} \\
+Add a new live mode or CLI flag & \file{live\_vpr\_test.py} \\
+\bottomrule
+\end{longtable}
+
+\section{Practical Mental Model}
+Almost everything in the repo reduces to the same conceptual loop:
+
+\begin{center}
+\fbox{\parbox{0.82\linewidth}{
+\centering
+image $\rightarrow$ descriptor $\rightarrow$ similarity $\rightarrow$ decision
+}}
+\end{center}
+
+The benchmark path adds evaluation metrics. The live path adds UI, capture sources, and saved reference maps. If you keep that mental model in mind, the rest of the codebase becomes much easier to navigate.
+
+\section{Known Diagram Rendering Pitfalls (and why these figures are stable now)}
+This guide uses three safeguards so the diagrams render predictably across editors and export flows:
+
+\begin{itemize}[leftmargin=*]
+  \item figures are pinned with \texttt{[H]} to avoid aggressive float reordering,
+  \item each TikZ figure is wrapped in \texttt{\textbackslash resizebox\{0.98\textbackslash textwidth\}\{!\}\{...\}} to prevent clipping,
+  \item node widths and spacing are bounded so no text spills outside the page box.
+\end{itemize}
+
+If a renderer still hides TikZ graphics, compile with \texttt{pdflatex} or \texttt{xelatex} directly and ensure TikZ is enabled in the LaTeX distribution.
+
+\end{document}

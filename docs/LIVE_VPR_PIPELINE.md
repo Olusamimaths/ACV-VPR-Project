@@ -1,382 +1,381 @@
 # Live VPR Pipeline
 
-This document explains the modular live Visual Place Recognition pipeline in this repository. The pipeline now supports:
+This document explains the newer live Visual Place Recognition pipeline in this repository.
 
-- building a reference map from an existing image folder
-- building a reference map by recording a traversal video and sampling frames after recording stops
-- live localization from a webcam, phone webcam, stream URL, or recorded video
-- configurable inference cadence so live preview and model processing are decoupled
-- systematic camera-source discovery and friendly source aliases like `phone`
+Read this after [PROJECT_ARCHITECTURE_GUIDE.md](./PROJECT_ARCHITECTURE_GUIDE.md) if you want a more focused explanation of the live system only.
 
-For the bash launcher that wraps the common commands, see `docs/LIVE_VPR_SCRIPT.md`.
-For a ready-to-run command cookbook with both bash and Python examples, see `docs/LIVE_VPR_COMMANDS.md`.
+Use this document to understand:
 
-## Architecture
+- how maps are built
+- how live localization works
+- which modules own which part of the flow
+- where to edit the system when behavior changes
 
-The code is organized into two phases.
+For commands, see [LIVE_VPR_COMMANDS.md](./LIVE_VPR_COMMANDS.md).  
+For the bash wrapper, see [LIVE_VPR_SCRIPT.md](./LIVE_VPR_SCRIPT.md).
+
+## 1. What The Live Pipeline Does
+
+The live system splits the project into two phases.
+
+### Offline Phase
+
+Build a reusable reference map from either:
+
+- an existing image folder
+- a recorded traversal video
+
+The output is a saved `.npz` map containing:
+
+- normalized reference descriptors
+- reference image paths
+- metadata such as descriptor, target size, and map provenance
+
+### Online Phase
+
+Use a camera, stream, or video to localize incoming frames against that saved map.
+
+The output is:
+
+- a best-match index
+- a best similarity score
+- a top-k ranked list
+- a thresholded `MATCH` or `UNKNOWN` decision
+- an on-screen overlay and optional saved inference reports
+
+## 2. End-To-End Flow
 
 ```text
-OFFLINE PHASE (Map Building)
+OFFLINE
 
-Option A
-reference image folder
--> load images
--> resize/preprocess
+reference folder or traversal recording
+-> load / sample images
+-> resize to map target size
 -> extract descriptors
 -> normalize descriptors
--> save map (.npz)
+-> save ReferenceMap (.npz)
 
-Option B
-live camera / phone webcam / stream
--> record traversal video
--> stop recording
--> sample frames from video at sample_fps
--> resize/preprocess
--> extract descriptors
--> normalize descriptors
--> save map (.npz)
-
-ONLINE PHASE (Live Localization)
+ONLINE
 
 webcam / phone webcam / stream / video
--> display every frame
--> run localization at process_fps
--> reuse latest prediction between inference steps
--> show top-k results and recognition decision
+-> read frame
+-> resize to map target size
+-> extract query descriptor
+-> cosine similarity vs saved map
+-> top-k ranking + thresholded decision
+-> live overlay + saved inference report
 ```
 
-## Module Layout
+## 3. Main Entry Point
 
-The modular implementation lives in `live_vpr/`.
+The main entrypoint is [live_vpr_test.py](../live_vpr_test.py).
 
-- `live_vpr/database.py`
-  Reference-map structure, serialization, and descriptor normalization.
-- `live_vpr/extractors.py`
-  Descriptor factory and conversion into global descriptor matrices.
-- `live_vpr/offline.py`
-  Folder-based and path-list-based map building.
-- `live_vpr/capture.py`
-  Traversal video recording and post-record frame sampling.
-- `live_vpr/online.py`
-  Query localization against a saved map.
-- `live_vpr/sources.py`
-  OpenCV capture-source abstraction.
-- `live_vpr/ui.py`
-  Live overlay and top-k visualization.
-- `live_vpr_test.py`
-  Python CLI entrypoint that ties everything together.
-- `scripts/live_vpr_cli.sh`
-  Bash launcher for common workflows.
+It is mostly an orchestration layer. It wires together smaller modules from [live_vpr/](../live_vpr).
 
-## Offline Phase
+The most important functions are:
 
-### Option A: Build From An Existing Reference Folder
+- `build_map(...)`
+- `build_live_map(...)`
+- `run_online(...)`
+- `check_source(...)`
+- `list_sources(...)`
 
-```bash
-python live_vpr_test.py \
-  --mode build_map \
-  --data_dir custom_dataset/day_images \
-  --map_path artifacts/live_maps/campus_day_cosplace.npz \
-  --descriptor CosPlace
+If you want to understand the live system, read those functions first.
+
+## 4. Module Map
+
+The modular implementation lives in [live_vpr/](../live_vpr).
+
+### [live_vpr/database.py](../live_vpr/database.py)
+
+Owns the saved map format.
+
+Important pieces:
+
+- `ReferenceMap`
+- `normalize_descriptors(...)`
+- `save_reference_map(...)`
+- `load_reference_map(...)`
+
+This is where the live pipeline stops thinking in terms of raw datasets and starts thinking in terms of reusable maps.
+
+### [live_vpr/extractors.py](../live_vpr/extractors.py)
+
+Owns descriptor creation for the live pipeline.
+
+Important pieces:
+
+- `SUPPORTED_DESCRIPTORS`
+- `create_feature_extractor(...)`
+- `compute_global_descriptors(...)`
+
+If you add a new live descriptor, this is one of the first files you must touch.
+
+### [live_vpr/offline.py](../live_vpr/offline.py)
+
+Owns map building from reference images.
+
+Important pieces:
+
+- `MapBuildConfig`
+- `MapBuilder`
+
+Core flow:
+
+```python
+images = [_load_rgb_image(path, target_size) for path in image_paths]
+descriptors = compute_global_descriptors(self.extractor, images)
+descriptors = normalize_descriptors(descriptors)
+reference_map = ReferenceMap(...)
 ```
 
-Use this when you already have a curated reference-image set.
+### [live_vpr/capture.py](../live_vpr/capture.py)
 
-### Option B: Record A Traversal Video And Build The Map After Stop
+Owns traversal recording and post-record frame sampling.
 
-```bash
-python live_vpr_test.py \
-  --mode build_live_map \
-  --map_path artifacts/live_maps/campus_day_live.npz \
-  --source 0 \
-  --recording_path artifacts/reference_videos/campus_day_walk.mp4 \
-  --capture_dir artifacts/reference_captures/campus_day_walk \
-  --sample_fps 1.0 \
-  --descriptor CosPlace
+Important pieces:
+
+- `VideoRecordingConfig`
+- `LiveReferenceRecorder`
+- `FrameSamplingConfig`
+- `sample_video_to_frames(...)`
+
+This is the file to read if you want to understand the “record first, build map after stop” workflow.
+
+### [live_vpr/online.py](../live_vpr/online.py)
+
+Owns runtime localization against a saved map.
+
+Important pieces:
+
+- `LocalizationResult`
+- `LiveLocalizer`
+
+Core logic:
+
+```python
+descriptor = compute_global_descriptors(self.extractor, [rgb_image])
+descriptor = descriptor / (np.linalg.norm(descriptor, axis=1, keepdims=True) + 1e-8)
+similarities = (self.reference_map.descriptors @ descriptor.T).reshape(-1)
 ```
 
-This mode works well when the existing reference images are not enough and you want to walk through the environment once and then build the map from that traversal.
+This file is where the actual live VPR decision happens.
 
-How it works:
+### [live_vpr/sources.py](../live_vpr/sources.py)
 
-1. The pipeline records a traversal video from the selected source.
-2. The recorder opens in `PAUSED` mode by default so nothing is recorded until you start it.
-3. Press `r` to start recording, and press `r` again whenever you want to pause.
-4. You stop recording and continue to map building by pressing `q`.
-5. The pipeline samples frames from the recorded video at `--sample_fps`.
-6. Those sampled frames become the reference set used for descriptor extraction.
-7. The reference map is saved as `.npz`.
+Owns camera and stream source handling.
 
-Recorder controls:
+Important pieces:
 
-- `r`: start recording if paused, or pause if already recording
-- `q`: stop recording and continue to map building
+- `OpenCVFrameSource`
+- `probe_capture_source(...)`
+- `list_available_capture_sources(...)`
+- `save_source_alias(...)`
+- `resolve_capture_source(...)`
 
-If you do want the recorder to begin immediately, pass `--start_recording`.
+This file abstracts:
 
-Why this design is useful:
+- numeric camera indexes
+- saved aliases like `phone` or `turbopi`
+- stream URLs
 
-- the raw traversal video is preserved for reproducibility
-- you can rebuild the map later with a different `sample_fps`
-- you do not need to manually capture images while walking
-- map creation becomes more consistent across runs
+### [live_vpr/ui.py](../live_vpr/ui.py)
 
-### Build A Map From An Existing Traversal Video
+Owns the live overlay and the saved inference-report images.
 
-```bash
-python live_vpr_test.py \
-  --mode build_live_map \
-  --video recordings/campus_walk.mp4 \
-  --use_video_for_live_build \
-  --map_path artifacts/live_maps/campus_day_from_video.npz \
-  --capture_dir artifacts/reference_captures/campus_day_from_video \
-  --sample_fps 1.0 \
-  --descriptor CosPlace
+Important pieces:
+
+- `LiveDisplay.render(...)`
+- `LiveDisplay.render_inference_report(...)`
+
+This is where to modify:
+
+- labels
+- text padding
+- top-k display
+- saved inference-image layout
+
+## 5. Offline Phase In Detail
+
+There are three ways to build a map.
+
+### Option A: Existing Reference Folder
+
+Used when you already have curated reference images.
+
+Flow:
+
+```text
+image folder
+-> load paths
+-> resize images
+-> extract descriptors
+-> normalize descriptors
+-> save .npz map
 ```
 
-This skips the recording step and directly samples an already-recorded video.
+Owned by:
 
-## Online Phase
+- [live_vpr/offline.py](../live_vpr/offline.py)
+- `build_map(...)` in [live_vpr_test.py](../live_vpr_test.py)
 
-### Live Webcam Or Phone Webcam
+### Option B: Live Traversal Recording
 
-```bash
-python live_vpr_test.py \
-  --mode live \
-  --map_path artifacts/live_maps/campus_day_live.npz \
-  --source 0 \
-  --threshold 0.50 \
-  --process_fps 2.0 \
-  --mirror
+Used when existing reference images are not enough.
+
+Flow:
+
+```text
+camera / phone webcam / stream
+-> record traversal video
+-> stop recording
+-> sample frames from video
+-> build map from sampled frames
 ```
 
-The live viewer opens with inference paused by default.
+Owned by:
 
-- press `i` to start inference
-- press `i` again to pause inference
-- pass `--start_inference` if you want inference to begin immediately
+- [live_vpr/capture.py](../live_vpr/capture.py)
+- `build_live_map(...)` in [live_vpr_test.py](../live_vpr_test.py)
 
-### What Is Used During Live Inference
+Important behavior:
 
-The live phase does not compute the offline evaluation metrics such as:
+- the recorder opens paused by default
+- `r` starts or pauses recording
+- `q` stops recording and moves on to map building
+
+### Option C: Existing Traversal Video
+
+Used when you already recorded a route and want to rebuild the map later.
+
+Flow:
+
+```text
+saved video
+-> sample frames at sample_fps
+-> build map
+```
+
+This is useful when you want to compare:
+
+- different descriptors
+- different sampling rates
+- different map densities
+
+## 6. Online Phase In Detail
+
+The online flow is driven by `run_online(...)` in [live_vpr_test.py](../live_vpr_test.py).
+
+The key runtime steps are:
+
+1. Load a saved map with `load_reference_map(...)`
+2. Create a `LiveLocalizer`
+3. Open a capture source with `OpenCVFrameSource`
+4. Read frames continuously
+5. Run localization only at `process_fps`
+6. Reuse the most recent result between inference steps
+7. Draw the overlay and save inference reports if enabled
+
+This separation is important:
+
+- frame display can stay smooth
+- localization can run at a slower rate
+- the system remains usable on weaker hardware
+
+## 7. Runtime Signals vs Offline Metrics
+
+The live session does not compute benchmark metrics like:
 
 - AUC
-- precision-recall curves
-- Recall@K
-- R@100P
+- PR curves
+- `R@100P`
+- `R@K`
 
-Instead, the online decision uses lightweight runtime signals:
+Instead, it uses runtime quantities:
 
-- top-1 cosine similarity score
+- best cosine similarity score
+- top-k ranked reference images
 - thresholded recognition decision
-- top-k ranked matches
 - descriptor extraction latency
-- result age in milliseconds
+- age of the latest inference result
 
-These are the quantities shown in the live overlay and used during the live session.
+That is why the live system feels more like a demo application than a benchmark script.
 
-If your phone appears as a virtual webcam, use another device index:
+## 8. Source Discovery And Aliases
 
-```bash
-python live_vpr_test.py --mode live --map_path artifacts/live_maps/campus_day_live.npz --source 1
-```
+The live pipeline supports more than just `--source 0`.
 
-If your phone exposes a stream URL:
+You can use:
 
-```bash
-python live_vpr_test.py --mode live --map_path artifacts/live_maps/campus_day_live.npz --source http://192.168.1.20:4747/video
-```
+- camera indexes like `0`, `1`, `2`
+- stream URLs
+- aliases like `phone` or `turbopi`
 
-### Recorded Video Playback
+Aliases are saved in:
 
-```bash
-python live_vpr_test.py \
-  --mode video \
-  --map_path artifacts/live_maps/campus_day_live.npz \
-  --video recordings/query_walk.mp4 \
-  --process_fps 2.0
-```
+- `artifacts/live_vpr_sources.json`
 
-## Inference Cadence
+This is especially useful for:
 
-The live pipeline no longer needs to run inference on every displayed frame.
+- phone webcams
+- TurboPi streams
+- unstable numeric camera indexes
 
-- every camera frame is still shown in the preview
-- the live viewer opens paused unless `--start_inference` is used
-- localization only runs at `--process_fps`
-- the most recent localization result is reused between inference steps
-- the overlay shows the age of the current result in milliseconds
-- the overlay shows the live controls directly on screen
-- an annotated image is saved after each inference by default
+## 9. Files To Edit For Common Tasks
 
-This is usually better for laptop and phone-webcam testing because:
-
-- compute cost is controlled
-- UI responsiveness improves
-- latency becomes more predictable
-- weak hardware can still run a usable demo
-
-Recommended defaults:
-
-- `--sample_fps 1.0` for traversal-to-map building
-- `--process_fps 2.0` for live localization
-
-You can set `--process_fps 0` or a negative value to process every frame.
-
-## Important CLI Flags
-
-### Source Discovery And Aliases
-
-- `--mode list_sources`
-  Probe numeric camera indexes systematically instead of guessing `0`, `1`, `2`.
-- `--source_scan_max`
-  Highest index to scan when probing available cameras.
-- `--source_snapshot_dir`
-  Optional directory for saving one preview image per detected source.
-- `--mode save_source_alias --alias <name> --source <value>`
-  Save a friendly alias such as `phone -> 3` or `phone -> http://...`.
-
-Once an alias is saved, you can use it anywhere a source is accepted:
-
-```bash
-python live_vpr_test.py --mode live --source phone --map_path artifacts/live_maps/campus_day_live.npz
-```
-
-### Map Building
-
-- `--descriptor`
-  Descriptor family used for map creation and later localization.
-- `--resize_width`, `--resize_height`
-  Canonical model input size stored in map metadata.
-- `--recording_path`
-  Output path for the traversal video recorded during live map building.
-- `--capture_dir`
-  Directory for sampled reference frames extracted from the traversal video.
-- `--sample_fps`
-  Number of sampled reference frames per second from the recorded video.
-- `--min_captures`
-  Minimum number of sampled frames required before the map is accepted.
-- `--max_captures`
-  Optional upper bound on sampled reference frames.
-
-### Live Localization
-
-- `--threshold`
-  Similarity threshold for accepting a match.
-- `--top_k`
-  Number of best reference matches shown in the overlay.
-- `--process_fps`
-  Localization cadence during live or video runtime.
-- `--inference_stats_dir`
-  Directory for annotated images saved after each inference.
-- `--no_save_inference_images`
-  Disable the default behavior of saving an annotated image after every inference.
-- `--mirror`
-  Mirror the live display for a more natural webcam experience.
-- `--output_video`
-  Save the annotated live session.
-
-## Data Products
-
-The pipeline may produce three related artifacts:
-
-1. traversal video
-2. sampled reference frames
-3. final reference map
-
-The saved reference map contains:
-
-- normalized descriptors
-- absolute reference image paths
-- metadata including descriptor, target size, and live-build provenance such as source video path and sampling rate
-
-## How To Modify The Pipeline
-
-### Change The Descriptor
+### Add or change a descriptor
 
 Edit:
 
-- `live_vpr/extractors.py`
+- [live_vpr/extractors.py](../live_vpr/extractors.py)
+- the corresponding file in [feature_extraction/](../feature_extraction)
 
-Update `SUPPORTED_DESCRIPTORS` and `create_feature_extractor()`. The live pipeline expects a 2D global descriptor matrix with shape `[N, D]`.
-
-### Change Video Recording Behavior
-
-Edit:
-
-- `live_vpr/capture.py`
-
-This is where you can:
-
-- change recorder controls
-- adjust codec or container
-- add maximum recording duration
-- add timestamp overlays
-- save per-frame timestamps or motion metadata
-
-### Change Video Sampling Policy
+### Change map metadata or map format
 
 Edit:
 
-- `live_vpr/capture.py`
+- [live_vpr/database.py](../live_vpr/database.py)
 
-The current approach samples by time using `sample_fps`. This is the right place to add:
-
-- motion-based frame filtering
-- blur filtering
-- keyframe selection
-- scene-change filtering
-
-### Change Map Storage
+### Change traversal recording behavior
 
 Edit:
 
-- `live_vpr/database.py`
-- `live_vpr/offline.py`
+- [live_vpr/capture.py](../live_vpr/capture.py)
 
-This is the right place to add building labels, GPS tags, route IDs, timestamps, or user annotations.
-
-### Change Online Recognition Logic
+### Change localization logic
 
 Edit:
 
-- `live_vpr/online.py`
-- `live_vpr_test.py`
+- [live_vpr/online.py](../live_vpr/online.py)
 
-This is where to add:
-
-- top-1 vs top-2 margin checks
-- temporal smoothing
-- history-aware voting
-- confidence stabilization
-
-### Change The UI
+### Change overlays or saved inference images
 
 Edit:
 
-- `live_vpr/ui.py`
+- [live_vpr/ui.py](../live_vpr/ui.py)
 
-This is where to add:
+### Change camera/stream handling
 
-- building names
-- confidence bars
-- route progress hints
-- result-age visualization
+Edit:
 
-## Suggested Workflow For Your Campus
+- [live_vpr/sources.py](../live_vpr/sources.py)
 
-1. Start with `CosPlace`.
-2. Run `list_sources` and save an alias such as `phone` once you identify the correct camera or stream.
-3. Record a traversal with `build_live_map` instead of relying only on the existing day-image folder.
-4. Sample at `1.0 fps` first.
-5. Run live localization at `2.0 fps`.
-6. Increase `sample_fps` if you need denser reference coverage.
-7. Increase `process_fps` only if the hardware can keep up.
-8. Tune `--threshold` after observing false accepts and misses.
+### Change CLI flags or add a new mode
 
-## Known Runtime Requirements
+Edit:
 
-- OpenCV is required for recording, video playback, webcam access, and UI.
-- The descriptor dependencies for the chosen model must be installed.
-- The runtime descriptor must match the descriptor used to build the map.
-- If you change preprocessing or resize settings, rebuild the map.
+- [live_vpr_test.py](../live_vpr_test.py)
+
+## 10. Recommended Reading Order
+
+For a new developer working on the live system, read in this order:
+
+1. [live_vpr_test.py](../live_vpr_test.py)
+2. [live_vpr/offline.py](../live_vpr/offline.py)
+3. [live_vpr/capture.py](../live_vpr/capture.py)
+4. [live_vpr/database.py](../live_vpr/database.py)
+5. [live_vpr/online.py](../live_vpr/online.py)
+6. [live_vpr/ui.py](../live_vpr/ui.py)
+7. [live_vpr/sources.py](../live_vpr/sources.py)
+
+That path mirrors how the system actually operates.

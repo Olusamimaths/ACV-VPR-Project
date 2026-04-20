@@ -1,129 +1,205 @@
-# Campus Dataset - User Guide
+# Campus Dataset User Guide
 
-## Overview
+This guide explains how the custom campus dataset fits into the project and how to use it for both evaluation and live testing.
 
-This guide covers how to use the Visual Place Recognition (VPR) system with your custom campus dataset.
+Read this if you want to answer:
 
-## Dataset Structure
+- what the campus dataset is
+- how the campus benchmark script works
+- how to build a live map from campus imagery
+- which files matter when changing the campus workflow
 
-```
+## 1. What The Campus Dataset Is
+
+The campus dataset is a local day-to-night place-recognition dataset stored in [custom_dataset/](../custom_dataset).
+
+High-level structure:
+
+```text
 custom_dataset/
-├── day_images/      # 50 reference images (database)
-│   └── image001.jpg ... image050.jpg
-└── night_images/    # 64 query images
-    ├── image001.jpg          # Has matching day image
-    ├── image003-npm.jpg      # No perfect match (-npm suffix)
-    └── ...
+├── day_images/
+└── night_images/
 ```
 
-### Naming Convention
-- `image042.jpg` (night) matches `image042.jpg` (day)
-- `image043-npm.jpg` has no corresponding day image
-- `PXL_*.jpg` files have no matches
+The intended use is:
 
-## Quick Start
+- `day_images`: reference database
+- `night_images`: query set
 
-### Run VPR Test
+Unlike the original tutorial datasets, this one was collected locally and includes explicit no-match cases.
+
+## 2. How Ground Truth Works
+
+Ground truth is created by [CampusDataset](../datasets/load_dataset.py) in [datasets/load_dataset.py](../datasets/load_dataset.py).
+
+Key rules:
+
+- `image042.jpg` matches `image042.jpg`
+- `image043-npm.jpg` is treated as a no-match query
+- `npmXX.jpg` is treated as a no-match query
+- `PXL_*.jpg` is treated as a no-match query
+
+The loader also creates:
+
+- `GThard`: strict matches
+- `GTsoft`: a small tolerance window for nearby matches
+
+## 3. Main Campus Evaluation Script
+
+The main script is [test_campus_dataset.py](../test_campus_dataset.py).
+
+It follows the same evaluation pattern as [demo.py](../demo.py):
+
+```text
+load campus dataset
+-> extract descriptors
+-> compute similarity matrix
+-> apply matching
+-> compute metrics
+-> save plots / examples
+```
+
+The main difference from `demo.py` is that it uses `CampusDataset` instead of the built-in tutorial datasets.
+
+## 4. Typical Campus Evaluation Command
+
 ```bash
 python test_campus_dataset.py --descriptor CosPlace --save_results
 ```
 
-### Build A Live Reference Map
+This will:
+
+- load the campus day and night images
+- compute descriptors
+- build the similarity matrix
+- compute metrics like AUC, `R@100P`, and `R@K`
+- save the plots and summary files into `output_images/`
+
+Useful variants:
+
+```bash
+python test_campus_dataset.py --descriptor EigenPlaces --save_results
+python test_campus_dataset.py --descriptor CosPlace --n_correct 2 --n_wrong 15 --save_results
+```
+
+## 5. Output Files
+
+When `--save_results` is used, the campus script writes files into [output_images/](../output_images).
+
+Common outputs:
+
+- `campus_similarity_matrix.png`
+- `campus_matching_results.png`
+- `campus_pr_curve.png`
+- `campus_matches_examples.png`
+- `campus_results.txt`
+
+These are useful for:
+
+- qualitative debugging
+- comparing descriptors
+- including figures in reports or slides
+
+## 6. Using The Campus Data In The Live Pipeline
+
+The live system does not use `GThard` or `GTsoft` during runtime. It uses a saved reference map instead.
+
+That means the typical campus live workflow is:
+
+1. build a map from `custom_dataset/day_images`
+2. run live or video localization against that map
+
+### Build A Map From The Existing Day Folder
+
+```bash
+python live_vpr_test.py \
+  --mode build_map \
+  --data_dir custom_dataset/day_images \
+  --descriptor CosPlace \
+  --map_path artifacts/live_maps/campus_day_cosplace.npz
+```
+
+### Build A Map From A Recorded Traversal
+
+Use this when the original day images are not enough.
+
 ```bash
 python live_vpr_test.py \
   --mode build_live_map \
-  --map_path artifacts/live_maps/campus_day_live.npz \
   --source 0 \
-  --descriptor CosPlace \
   --recording_path artifacts/reference_videos/campus_day_walk.mp4 \
-  --capture_dir artifacts/reference_captures/campus_day_live \
-  --sample_fps 1.0
+  --capture_dir artifacts/reference_captures/campus_day_walk \
+  --sample_fps 1.0 \
+  --descriptor CosPlace \
+  --map_path artifacts/live_maps/campus_day_live.npz
 ```
 
-This lets you move around with a webcam or phone webcam, record a traversal video, and then build the map from sampled video frames after you stop recording.
+### Run Live Localization
 
-The recorder opens paused by default. Press `r` to start or pause recording, and press `q` when you want to stop and build the map.
-
-### Bash Launcher
 ```bash
-bash scripts/live_vpr_cli.sh record-map
-bash scripts/live_vpr_cli.sh live --mirror
+python live_vpr_test.py \
+  --mode live \
+  --source 0 \
+  --map_path artifacts/live_maps/campus_day_live.npz \
+  --process_fps 2.0
 ```
 
-The launcher script wraps the common project workflows. See `docs/LIVE_VPR_SCRIPT.md` for details.
+## 7. When To Use Which Path
 
-### Command Options
-```bash
---descriptor    # Feature extractor: CosPlace, EigenPlaces, HDC-DELF, AlexNet, NetVLAD
---n_correct N   # Number of correct matches to display (default: 3)
---n_wrong N     # Number of wrong matches to display (default: 5)
---save_results  # Save all visualizations to output_images/
-```
+Use [test_campus_dataset.py](../test_campus_dataset.py) when you want:
 
-### Examples
-```bash
-# Basic test with CosPlace
-python test_campus_dataset.py --descriptor CosPlace --save_results
+- metrics
+- PR curves
+- recall values
+- qualitative correct/wrong match plots
 
-# Show more wrong matches for failure analysis
-python test_campus_dataset.py --descriptor CosPlace --n_correct 2 --n_wrong 15 --save_results
+Use [live_vpr_test.py](../live_vpr_test.py) when you want:
 
-# Compare different descriptors
-python test_campus_dataset.py --descriptor EigenPlaces --save_results
-```
+- map building
+- webcam testing
+- phone webcam testing
+- stream testing
+- demo preparation
 
-## Output Files
+## 8. Common Files For Campus Work
 
-When using `--save_results`, files are saved to `output_images/`:
+- [test_campus_dataset.py](../test_campus_dataset.py): campus benchmark script
+- [datasets/load_dataset.py](../datasets/load_dataset.py): `CampusDataset` loader
+- [live_vpr_test.py](../live_vpr_test.py): live map building and live localization
+- [live_vpr/offline.py](../live_vpr/offline.py): reference-map construction
+- [live_vpr/online.py](../live_vpr/online.py): live localization
+- [live_vpr/ui.py](../live_vpr/ui.py): on-screen and saved live results
 
-| File | Description |
-|------|-------------|
-| `campus_matches_examples.png` | Correct (green) and wrong (red) match visualizations |
-| `campus_similarity_matrix.png` | Heatmap of all day-night similarities |
-| `campus_pr_curve.png` | Precision-Recall curve |
-| `campus_results.txt` | Performance metrics (AUC, R@K) |
+## 9. Troubleshooting
 
-## Understanding Results
+### Missing PyTorch
 
-### Visualization Colors
-- **Green border** = Correct match (same location)
-- **Red border** = Wrong match (different locations)
+Some descriptors require PyTorch:
 
-### Performance Metrics
-- **AUC**: Area under PR curve (0-1, higher is better)
-- **R@100P**: Max recall at 100% precision
-- **R@1, R@5, R@10**: Top-K recall rates
-
-### Expected Performance (Day-to-Night)
-| Descriptor | AUC | R@1 |
-|------------|-----|-----|
-| CosPlace | 0.7-0.8 | 0.6-0.7 |
-| EigenPlaces | 0.7-0.8 | 0.6-0.7 |
-| HDC-DELF | 0.6-0.7 | 0.4-0.5 |
-
-## Troubleshooting
-
-### Missing dependencies
-```bash
-pip install scipy numpy matplotlib pillow scikit-image torch torchvision
-```
-
-### "No module named torch"
-CosPlace and other deep learning descriptors require PyTorch:
 ```bash
 pip install torch torchvision
 ```
 
-### Low performance
-Day-to-night matching is inherently challenging due to lighting changes. Try different descriptors to find the best one for your dataset.
+### Missing scientific packages
 
-## Files Reference
+```bash
+pip install scipy numpy matplotlib pillow scikit-image
+```
 
-- `test_campus_dataset.py` - Main test script for campus dataset
-- `demo.py` - Original VPR tutorial demo
-- `live_vpr_test.py` - Real-time VPR with camera
-- `docs/LIVE_VPR_PIPELINE.md` - Modular offline/online live-testing architecture and usage guide
-- `docs/LIVE_VPR_SCRIPT.md` - Bash launcher usage and configuration
-- `docs/LIVE_VPR_COMMANDS.md` - Command cookbook for both bash launcher and raw Python usage
-- `datasets/load_dataset.py` - Dataset loaders (includes CampusDataset)
-- `evaluation/show_correct_and_wrong_matches.py` - Match visualization
+### Weak day-to-night performance
+
+That is expected to some degree. The campus set is harder and noisier than a clean benchmark, especially because it includes no-match cases.
+
+### Live demo is slow
+
+Lower:
+
+- `--process_fps`
+- source resolution
+- map density if the reference map is extremely large
+
+And confirm which runtime backend is printed during live startup:
+
+- `cuda`
+- `mps`
+- or `cpu`

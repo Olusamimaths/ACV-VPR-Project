@@ -1,14 +1,20 @@
 # Live VPR Launcher Script
 
-This document explains the bash launcher at `scripts/live_vpr_cli.sh`.
+This document explains the bash launcher at [scripts/live_vpr_cli.sh](../scripts/live_vpr_cli.sh).
 
-The script is a lightweight wrapper around `live_vpr_test.py`. It gives you short commands for the main workflows without needing to type the full Python command every time.
+Use this guide if you want the shortest way to run the project day to day.
 
-For a broader command cookbook that includes both launcher commands and raw Python commands, see `docs/LIVE_VPR_COMMANDS.md`.
+The launcher is a thin wrapper around [live_vpr_test.py](../live_vpr_test.py). It does not implement VPR logic itself. It simply:
 
-## Basic Usage
+- chooses a high-level command
+- fills in defaults from environment variables
+- forwards extra arguments to the Python CLI
 
-Run it with:
+For a command cookbook with copy-paste examples, see [LIVE_VPR_COMMANDS.md](./LIVE_VPR_COMMANDS.md).
+
+## 1. Basic Usage
+
+Run:
 
 ```bash
 bash scripts/live_vpr_cli.sh <command> [extra args...]
@@ -28,17 +34,13 @@ Available commands:
 - `delete-source-alias`
 - `help`
 
-## Commands
+## 2. What Each Command Does
 
 ### `build-map`
 
-Build a map from an existing image folder.
+Build a reference map from an existing image folder.
 
-```bash
-bash scripts/live_vpr_cli.sh build-map
-```
-
-Equivalent Python flow:
+Equivalent Python mode:
 
 ```bash
 python live_vpr_test.py --mode build_map ...
@@ -46,202 +48,148 @@ python live_vpr_test.py --mode build_map ...
 
 ### `record-map`
 
-Record a traversal video from a live source, sample the video, and build a reference map.
+Record a traversal video from a live source, sample frames from that video, and build a map.
 
-```bash
-bash scripts/live_vpr_cli.sh record-map --source 0 --mirror
-```
-
-The recorder opens paused by default. Press `r` to start recording and `r` again to pause. If you want it to begin immediately, pass `--start_recording`.
-
-Equivalent Python flow:
+Equivalent Python mode:
 
 ```bash
 python live_vpr_test.py --mode build_live_map ...
 ```
 
+Important behavior:
+
+- recorder opens paused by default
+- `r` starts or pauses recording
+- `q` stops recording and continues to map building
+
 ### `video-map`
 
-Build a map from an already-recorded traversal video.
+Build a map from an already-recorded video.
+
+This uses:
 
 ```bash
-VPR_VIDEO_PATH=recordings/campus_walk.mp4 bash scripts/live_vpr_cli.sh video-map
+python live_vpr_test.py --mode build_live_map --use_video_for_live_build ...
 ```
 
 ### `live`
 
-Run live localization from a webcam, virtual webcam, or stream.
+Run live localization from a webcam, phone webcam, or stream.
+
+Equivalent Python mode:
 
 ```bash
-bash scripts/live_vpr_cli.sh live --source 0 --mirror
+python live_vpr_test.py --mode live ...
 ```
 
-The live viewer opens with inference paused by default. Press `i` to start or pause inference. If you want it to start immediately, pass `--start_inference`.
+Important behavior:
 
-By default, the live pipeline also saves an annotated image after each inference. Use `--no_save_inference_images` if you want to disable that behavior.
+- viewer opens with inference paused by default
+- `i` starts or pauses inference
+- `q` quits
 
 ### `video`
 
-Run localization on a recorded query video.
-
-```bash
-VPR_VIDEO_PATH=recordings/query_walk.mp4 bash scripts/live_vpr_cli.sh video
-```
+Run localization on a recorded query video instead of a live source.
 
 ### `check-source`
 
-Check whether a webcam or stream is available.
-
-```bash
-bash scripts/live_vpr_cli.sh check-source --source 0
-```
-
-## Source Discovery And Naming
+Open a camera or stream and confirm that one frame can be read.
 
 ### `list-sources`
 
-Probe a range of numeric camera indexes and report which ones open successfully.
-
-```bash
-bash scripts/live_vpr_cli.sh list-sources --source_scan_max 10
-```
-
-You can also save preview frames while scanning:
-
-```bash
-bash scripts/live_vpr_cli.sh list-sources --source_scan_max 10 --source_snapshot_dir artifacts/source_previews
-```
-
-This helps you systematically identify which index corresponds to your phone.
+Probe a range of numeric camera indexes and report which ones actually open.
 
 ### `save-source-alias`
 
-Save a friendly alias such as `phone` or `laptop`.
-
-```bash
-bash scripts/live_vpr_cli.sh save-source-alias --alias phone --source 3
-```
-
-You can also save an alias for a stream URL:
-
-```bash
-bash scripts/live_vpr_cli.sh save-source-alias --alias phone --source http://192.168.1.20:4747/video
-```
+Save a friendly name like `phone` or `turbopi` for a source.
 
 ### `list-source-aliases`
 
-List all saved aliases:
-
-```bash
-bash scripts/live_vpr_cli.sh list-source-aliases
-```
+Print the aliases currently saved in `artifacts/live_vpr_sources.json`.
 
 ### `delete-source-alias`
 
-Remove an alias you no longer want:
+Remove an alias you no longer want.
 
-```bash
-bash scripts/live_vpr_cli.sh delete-source-alias --alias phone
-```
+## 3. Why The Launcher Exists
 
-Once an alias is saved, you can use it anywhere a source is accepted:
+The launcher is useful because it gives you:
 
-```bash
-bash scripts/live_vpr_cli.sh record-map --source phone
-bash scripts/live_vpr_cli.sh live --source phone
-```
+- shorter commands
+- reusable defaults
+- one consistent interface for common workflows
 
-## Default Configuration Through Environment Variables
+This is especially helpful when repeatedly testing:
 
-The script uses environment variables for defaults, so you can keep a preferred setup without rewriting commands.
+- the same descriptor
+- the same reference map
+- the same camera or stream source
 
-Supported variables:
+## 4. Default Configuration
+
+The script reads defaults from environment variables.
+
+Common ones:
 
 - `PYTHON_BIN`
-  Python executable to use.
 - `VPR_DESCRIPTOR`
-  Descriptor name, for example `CosPlace`.
 - `VPR_MAP_PATH`
-  Reference-map path used for both building and localization.
 - `VPR_REFERENCE_DIR`
-  Folder path for `build-map`.
 - `VPR_SOURCE`
-  Webcam index or stream URL.
 - `VPR_THRESHOLD`
-  Live recognition threshold.
 - `VPR_PROCESS_FPS`
-  Inference cadence for `live` and `video`.
 - `VPR_SAMPLE_FPS`
-  Sampling rate for `record-map` and `video-map`.
 - `VPR_RECORDING_PATH`
-  Traversal-video path for `record-map`.
 - `VPR_CAPTURE_DIR`
-  Directory for sampled reference frames.
 - `VPR_VIDEO_PATH`
-  Input video path for `video` and `video-map`.
 
-## Example Presets
+That means you can set up a preferred workflow once and then run very short commands after that.
 
-### Laptop Webcam
+Example:
 
 ```bash
 export VPR_DESCRIPTOR=CosPlace
 export VPR_MAP_PATH=artifacts/live_maps/campus_day_live.npz
-export VPR_SOURCE=0
+export VPR_SOURCE=phone
 export VPR_PROCESS_FPS=2.0
 ```
 
-Then run:
+Then:
 
 ```bash
 bash scripts/live_vpr_cli.sh record-map
-bash scripts/live_vpr_cli.sh live --mirror
-```
-
-### Phone As Virtual Webcam
-
-```bash
-export VPR_SOURCE=1
-bash scripts/live_vpr_cli.sh check-source
 bash scripts/live_vpr_cli.sh live
 ```
 
-### Build A Map From An Existing Traversal Video
+## 5. Passing Extra Arguments
+
+Any extra arguments after the launcher command are forwarded directly to [live_vpr_test.py](../live_vpr_test.py).
+
+Example:
 
 ```bash
-export VPR_VIDEO_PATH=recordings/campus_walk.mp4
-export VPR_MAP_PATH=artifacts/live_maps/campus_from_video.npz
-export VPR_SAMPLE_FPS=1.0
-bash scripts/live_vpr_cli.sh video-map
-```
-
-## Passing Extra Args
-
-The script forwards any extra arguments directly to `live_vpr_test.py`.
-
-Examples:
-
-```bash
-bash scripts/live_vpr_cli.sh record-map --sample_fps 2.0 --descriptor EigenPlaces
 bash scripts/live_vpr_cli.sh live --threshold 0.45 --top_k 8
 ```
 
-This means the script gives you convenient defaults, but you can still override settings per run.
+This is useful because the launcher stays convenient without hiding the full Python CLI.
 
-## Recommended Workflow
+## 6. Recommended Usage Pattern
 
-1. Use `record-map` to build a richer reference map from a traversal video.
-2. Use `live` for real-time testing.
-3. Use `video` when you want repeatable evaluation on a saved query traversal.
-4. Use `video-map` if you want to rebuild the map later with a different `sample_fps`.
+For most users, the best pattern is:
 
-## Where To Change The Script
+1. identify the right source with `check-source` or `list-sources`
+2. save a source alias
+3. build a map with `build-map`, `record-map`, or `video-map`
+4. run localization with `live` or `video`
 
-If you want to change command presets or add more launcher commands, edit:
+## 7. Where To Edit The Launcher
 
-- `scripts/live_vpr_cli.sh`
+If you want to change launcher behavior, edit:
 
-If you want to change actual pipeline behavior, edit the Python modules instead:
+- [scripts/live_vpr_cli.sh](../scripts/live_vpr_cli.sh)
 
-- `live_vpr_test.py`
-- `live_vpr/`
+If you want to change actual VPR behavior, edit the Python code instead:
+
+- [live_vpr_test.py](../live_vpr_test.py)
+- [live_vpr/](../live_vpr)

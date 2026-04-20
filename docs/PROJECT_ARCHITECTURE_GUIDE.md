@@ -1,725 +1,511 @@
-# VPR Tutorial - Project Architecture & Analysis Guide
+# Project Architecture Guide
 
-**Project Name:** VPR_Tutorial (Visual Place Recognition Tutorial)  
-**Owner:** stschubert (Stefan Schubert)  
-**Repository:** stschubert/VPR_Tutorial  
-**Current Branch:** main  
-**Location:** `/Users/sam/Desktop/MS_EAI/Spring/Computer Vision/Lab/VPR_Tutorial/`  
-**Course Context:** MS_EAI Program, Spring Semester, Computer Vision Lab  
-**Analysis Date:** March 2026
+This document is the shortest useful onboarding guide to this repository.
 
----
+It is written for a junior developer who needs to answer questions like:
 
-## Table of Contents
+- Where does the code start?
+- What is the difference between the original tutorial pipeline and the newer live pipeline?
+- Which files should I open first?
+- If I want to change datasets, descriptors, matching, live UI, or camera input, where do I work?
 
-1. [Project Overview](#project-overview)
-2. [What is Visual Place Recognition](#what-is-visual-place-recognition)
-3. [Core Pipeline Explained](#core-pipeline-explained)
-4. [Module Breakdown](#module-breakdown)
-5. [Architecture Flow Diagram](#architecture-flow-diagram)
-6. [Extension Points](#extension-points)
-7. [File Structure](#file-structure)
-8. [How to Run](#how-to-run)
-9. [Key Concepts](#key-concepts)
+For the exact metric definitions, see [VPR_EVALUATION_FLOW.md](./VPR_EVALUATION_FLOW.md).  
+For live usage commands, see [LIVE_VPR_COMMANDS.md](./LIVE_VPR_COMMANDS.md).  
+For the live pipeline walkthrough, see [LIVE_VPR_PIPELINE.md](./LIVE_VPR_PIPELINE.md).
 
----
+## 1. Start Here
 
-## Project Overview
+There are three main entrypoints:
 
-This project provides a tutorial implementation of Visual Place Recognition (VPR) with support for multiple feature descriptors and datasets. It serves as a learning tool to understand how different approaches to place recognition work, and provides extension points for experimenting with new techniques.
+- [demo.py](../demo.py): original benchmark-evaluation pipeline for tutorial datasets
+- [test_campus_dataset.py](../test_campus_dataset.py): benchmark-style evaluation on the custom campus dataset
+- [live_vpr_test.py](../live_vpr_test.py): newer offline/online live VPR pipeline for map building and live localization
 
-**User Goals:**
-- Understand the codebase architecture and how all components connect
-- Identify where to work when extending the system with new techniques
-- Visualize the data flow through the recognition pipeline
+If you are new to the repo, read them in this order:
 
----
+1. [demo.py](../demo.py)
+2. [datasets/load_dataset.py](../datasets/load_dataset.py)
+3. [matching/matching.py](../matching/matching.py)
+4. [evaluation/metrics.py](../evaluation/metrics.py)
+5. [live_vpr_test.py](../live_vpr_test.py)
+6. [live_vpr/](../live_vpr)
 
-## What is Visual Place Recognition?
+That gives you the old tutorial flow first, then the newer production-style live flow.
 
-Visual Place Recognition is the task of recognizing a previously visited location using images. 
+## 2. Architecture At A Glance
 
-**Problem Setup:**
-- Given a **database** of reference images from known locations
-- Given **query** images of unknown locations  
-- Task: Match which query images correspond to which database images
+The repo now has two closely related architectures.
 
-**Applications:**
-- Robot localization and navigation
-- Image retrieval systems
-- Place recognition across time, seasons, and lighting changes
-- Loop closure detection in SLAM
+### A. Benchmark / Evaluation Architecture
 
-**Why it's hard:**
-- Visual appearance variations (day/night, seasons, weather)
-- Scale changes, viewpoint changes
-- Need for efficient matching of thousands of images
+Used by:
 
----
+- [demo.py](../demo.py)
+- [test_campus_dataset.py](../test_campus_dataset.py)
 
-## Core Pipeline Explained
+Flow:
 
-### What demo.py Does (Main Entry Point)
-
-The demo.py file orchestrates the complete VPR pipeline. Here's the flow:
-
-```
-1. CLI ARGUMENT PARSING
-   ├── --descriptor: which feature extractor to use
-   └── --dataset: which benchmark to test on
-
-2. DATASET LOADING [~lines 40-50]
-   → Returns: imgs_db (reference), imgs_q (queries), GThard, GTsoft
-
-3. FEATURE EXTRACTION [~lines 52-90]
-   → Extracts descriptors from all images
-   → Returns: D_db [N_ref × D], D_q [N_query × D]
-
-4. SIMILARITY COMPUTATION [~lines 92-130]
-   → Normalize descriptors (L2 norm)
-   → Compute cosine similarity: S = D_db @ D_q.T
-   → Result: S matrix [N_ref × N_query]
-
-5. MATCHING DECISIONS [~lines 135-140]
-   → Best match: Each query matches highest similarity reference
-   → Thresholding: Multi-match if above threshold
-
-6. EVALUATION & METRICS [~lines 142-165]
-   → Compare against ground truth
-   → Compute: AUC, R@100P (recall at 100% precision), R@K
-   → Visualize: PR curves, match matrices
+```text
+dataset loader
+-> images + ground truth
+-> descriptor extraction
+-> similarity matrix S
+-> matching decisions
+-> metrics + plots + qualitative examples
 ```
 
-### Key Data Structures
+This path is best for research-style evaluation.
 
-**Similarity Matrix S** `[N_ref × N_query]`
-- Contains cosine similarity scores (0-1) between all image pairs
-- High value = images are similar (likely same location)
-- Low value = images are different (different locations)
+### B. Live VPR Architecture
 
-**Match Matrix M** `[N_ref × N_query]` (binary)
-- 1 at position (i,j) if database image i matched query image j
-- 0 otherwise
-- Generated by matching strategy applied to S
+Used by:
 
-**Ground Truth (GT)**
-- GThard: Strict labels (only truly correct matches)
-- GTsoft: Relaxed labels (nearby matches acceptable for metrics)
+- [live_vpr_test.py](../live_vpr_test.py)
+- [scripts/live_vpr_cli.sh](../scripts/live_vpr_cli.sh)
 
----
+Flow:
 
-## Module Breakdown
+```text
+OFFLINE
+reference images or traversal video
+-> descriptor extraction
+-> normalized reference map (.npz)
 
-### 1. Dataset Module (`datasets/load_dataset.py`)
+ONLINE
+camera / stream / video
+-> periodic descriptor extraction
+-> similarity against reference map
+-> top-k results + thresholded decision
+-> live overlay + saved inference reports
+```
 
-**Purpose:** Load benchmark datasets and provide train/test splits
+This path is best for demos, webcam testing, phone webcam testing, and robot integration.
 
-**Supported Datasets:**
-- **GardensPoint**: Garden location with day and night imagery (challenging day-night scenario)
-- **StLucia**: Urban localization dataset
-- **SFU**: Another benchmark dataset
+## 3. Important Folders
 
-**Class Interface:**
+Here is the mental model for the top-level folders:
+
+- [datasets/](../datasets): dataset loaders and ground-truth generation
+- [feature_extraction/](../feature_extraction): descriptor implementations
+- [matching/](../matching): converts similarity scores into match decisions
+- [evaluation/](../evaluation): PR curves, recall metrics, and qualitative match display
+- [live_vpr/](../live_vpr): modular live pipeline components
+- [docs/](../docs): usage and architecture docs
+- [custom_dataset/](../custom_dataset): your local campus dataset
+- [artifacts/](../artifacts): saved maps, aliases, inference images, recordings
+- [TurboPi_Backup/](../TurboPi_Backup): reference copy of the robot-side code, useful for stream integration
+
+## 4. Core Concepts
+
+These objects appear everywhere in the codebase.
+
+### Images
+
+Most of the repo works with Python lists of `numpy` images:
+
 ```python
-class DatasetName:
-    def load(self) -> (imgs_db, imgs_q, GThard, GTsoft)
-        # imgs_db: list of reference images
-        # imgs_q: list of query images  
-        # GThard: strict ground truth labels
-        # GTsoft: relaxed ground truth labels
+imgs_db, imgs_q, GThard, GTsoft = dataset.load()
 ```
 
-**Extension:** Add new dataset by creating new class following same interface
+You will see this pattern in [demo.py](../demo.py) and [test_campus_dataset.py](../test_campus_dataset.py).
 
----
+### Descriptors
 
-### 2. Feature Extraction Modules (`feature_extraction/`)
+A descriptor is one vector per image, usually shape `[N, D]`.
 
-Feature extractors convert images into numerical descriptor vectors. Two main approaches:
+The repo standardizes that in [live_vpr/extractors.py](../live_vpr/extractors.py):
 
-#### 2a. Holistic Descriptors (single vector per image)
-**Files:** `feature_extractor_holistic.py`
-
-**Classes:**
-- `HDCDELF` - Holistic DELF (Deep Local Features aggregated)
-- `AlexNetConv3Extractor` - AlexNet CNN features (classical approach)
-- `SAD` - Sum of Absolute Differences (baseline - no learning)
-
-**Input/Output:**
-- Input: List of images `[N]`
-- Output: Descriptor matrix `[N × D]` where D is descriptor dimension
-
-**Characteristics:**
-- Fast (single vector per image)
-- Memory efficient
-- Good for initial place recognition
-
-**Extension:** Create new class inheriting from base extractor class
-
----
-
-#### 2b. Patch-Based Descriptors (multiple vectors per image)
-**Files:** `feature_extractor_patchnetvlad.py`
-
-**Classes:**
-- `PatchNetVLADFeatureExtractor` - Returns both holistic and local features
-
-**Input/Output:**
-- Input: List of images `[N]`
-- Output: 
-  - D_holistic `[N × D_h]` for full-image matching
-  - D_patches `[N × P × D_p]` for local patch matching
-  - Special method: `local_matcher_from_numpy_single_scale()` for local matching
-
-**Characteristics:**
-- More complex (multiple vectors per image)
-- Slower but potentially more accurate
-- Can capture fine details
-- Requires configuration (ini files)
-
-**Extension:** Extend PatchNetVLAD config or create new patch-based approach
-
----
-
-#### 2c. Modern Descriptors
-**Files:** 
-- `feature_extractor_cosplace.py` - CosPlace model
-- `feature_extractor_eigenplaces.py` - EigenPlaces model
-
-**Characteristics:**
-- State-of-the-art approaches
-- Holistic descriptors
-- Trained end-to-end for place recognition
-
-**Common Interface:** All follow `compute_features(images) → numpy array [N × D]`
-
----
-
-### 3. Matching Module (`matching/`)
-
-**Purpose:** Generate binary matching decisions from similarity matrix
-
-**Functions:**
-
-`best_match_per_query(S)` → M
-- Each query matches exactly one database image (highest similarity)
-- Returns binary matrix M where each query column has exactly one 1
-- **Use case:** Strict single-match scenarios
-
-`thresholding(S, mode='auto')` → M  
-- Query can match multiple database images above threshold
-- Finds optimal threshold to maximize performance
-- Returns binary matrix M with potentially multiple 1s per query
-- **Use case:** Allow multiple matches based on confidence
-
-**Output:** Binary matching matrix M `[N_ref × N_query]`
-
-**Extension:** Add new matching strategies (e.g., k-NN matching, graph-based matching)
-
----
-
-### 4. Evaluation Module (`evaluation/`)
-
-#### 4a. Metrics (`evaluation/metrics.py`)
-
-**Functions:**
-
-`createPR(S, GThard, GTsoft, matching='multi', n_thresh=100)` → (P, R)
-- Creates Precision-Recall curve by varying similarity threshold
-- Returns parallel arrays of Precision and Recall values
-- Evaluates both single-match and multi-match strategies
-- **Metrics explained:**
-  - Precision = (correct matches) / (total predictions)
-  - Recall = (correct matches) / (ground truth positives)
-
-`recallAt100precision(S, GThard, GTsoft, matching='multi', n_thresh=100)` → float
-- Maximum recall achievable while maintaining 100% precision
-- Key metric: "Can we get perfect precision?"
-
-`recallAtK(S, GThard, K=1)` → float
-- Percentage of queries where correct match is in top-K results
-- K=1: Is the true match the highest similarity?
-- K=5: Is the true match among top 5 matches?
-
-**Computation:** Systematically varies threshold and evaluates against ground truth
-
-**Extension:** Add new metrics (mAP, NDCG, ranking metrics, etc.)
-
----
-
-#### 4b. Visualization (`evaluation/show_correct_and_wrong_matches.py`)
-
-**Function:**
-`show(imgs_db, imgs_q, TP, FP)` 
-- Displays side-by-side correct matches (True Positives)
-- Shows sample failure cases (False Positives)
-- Visual debugging tool
-
-**Extension:** Add visualization of failure modes, confusion matrices, etc.
-
----
-
-## Architecture Flow Diagram
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                                                                          │
-│                    VISUAL PLACE RECOGNITION PIPELINE                     │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
-
-                                 INPUT
-                                  │
-                    ┌─────────────┴─────────────┐
-                    │                           │
-              Descriptor Type              Dataset Type
-           (HDC-DELF, NetVLAD,        (GardensPoint,
-            CosPlace, etc.)           StLucia, SFU)
-                    │                           │
-                    └─────────────┬─────────────┘
-                                  ▼
-                    ┌─────────────────────────┐
-                    │   LOAD DATASET          │
-                    │  (datasets/load_dataset)│
-                    └─────────────┬───────────┘
-                                  │
-                ┌─────────────────┼─────────────────┐
-                │                 │                 │
-                ▼                 ▼                 ▼
-        ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-        │   Images     │  │   Images     │  │ Ground Truth │
-        │   Database   │  │   Query      │  │ (Hard/Soft)  │
-        │   [N_ref]    │  │   [N_query]  │  │              │
-        └──────┬───────┘  └──────┬───────┘  └──────┬───────┘
-               │                 │                 │
-               └─────────────────┼─────────────────┘
-                                 ▼
-                    ┌─────────────────────────────┐
-                    │  FEATURE EXTRACTION         │
-                    │  (feature_extraction/*)     │
-                    │  compute_features(images)  │
-                    └─────────────┬───────────────┘
-                                  │
-                ┌─────────────────┼─────────────────┐
-                │                 │                 │
-                ▼                 ▼                 ▼
-        ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-        │  D_db        │  │  D_q         │  │ (patches if  │
-        │ [N_ref × D]  │  │ [N_query × D]│  │  local feat.)│
-        └──────┬───────┘  └──────┬───────┘  └──────┬───────┘
-               │                 │                 │
-               │                 │    ┌────────────┘
-               │                 │    │
-               └─────────────────┼────┘
-                                 ▼
-                    ┌──────────────────────────────┐
-                    │  NORMALIZE & COMPUTE         │
-                    │  SIMILARITY MATRIX           │
-                    │                              │
-                    │  D_db = D_db / norm(D_db)   │
-                    │  D_q = D_q / norm(D_q)      │
-                    │  S = D_db @ D_q.T           │
-                    │                              │
-                    │  S [N_ref × N_query]        │
-                    └──────────────┬───────────────┘
-                                  │
-                                  ▼
-                    ┌──────────────────────────────┐
-                    │   SIMILARITY MATRIX S        │
-                    │   (all pairwise similarities)│
-                    └──────────────┬───────────────┘
-                                  │
-                ┌─────────────────┴─────────────────┐
-                │                                   │
-                ▼                                   ▼
-     ┌────────────────────┐            ┌────────────────────┐
-     │  BEST MATCH        │            │  THRESHOLDING      │
-     │  per query         │            │  Multi-match       │
-     │  (matching/)       │            │  (matching/)       │
-     └────────┬───────────┘            └────────┬───────────┘
-              │                                 │
-              ▼                                 ▼
-     ┌────────────────────┐            ┌────────────────────┐
-     │  M1 [binary]       │            │  M2 [binary]       │
-     │  1 match/query     │            │  Multi match OK    │
-     └────────┬───────────┘            └────────┬───────────┘
-              │                                 │
-              └─────────────────┬───────────────┘
-                                │
-                                ▼
-                    ┌──────────────────────────────┐
-                    │   MATCH MATRICES M1, M2      │
-                    │   [N_ref × N_query] binary   │
-                    └──────────────┬───────────────┘
-                                  │
-         ┌────────────────────────┼────────────────────────┐
-         │                        │                        │
-         ▼                        ▼                        ▼
-   ┌──────────────┐       ┌──────────────┐       ┌──────────────┐
-   │  EVALUATION  │       │ COMPARISON   │       │ METRICS      │
-   │ vs GT        │       │ with GThard  │       │ COMPUTATION  │
-   │              │       │ and GTsoft   │       │              │
-   └──────┬───────┘       └──────┬───────┘       └──────┬───────┘
-          │                      │                     │
-          └──────────────────────┼─────────────────────┘
-                                 ▼
-                    ┌──────────────────────────────┐
-                    │   EVALUATION METRICS         │
-                    │   (evaluation/metrics)       │
-                    │                              │
-                    │  - createPR() → P, R curve  │
-                    │  - AUC (area under curve)   │
-                    │  - R@100P (recall @ 100%P)  │
-                    │  - R@K (recall @ top-K)     │
-                    └──────────────┬───────────────┘
-                                  │
-                    ┌─────────────┴─────────────┐
-                    │                           │
-                    ▼                           ▼
-              ┌──────────────┐         ┌──────────────┐
-              │ VISUALIZE    │         │ DISPLAY      │
-              │ PR curves    │         │ Metrics      │
-              │ Match matrix │         │ Summary      │
-              └──────────────┘         └──────────────┘
+```python
+descriptors = extractor.compute_features(images)
+descriptors = np.asarray(descriptors, dtype=np.float32)
 ```
 
-### Data Structure Details
+### Similarity Matrix `S`
 
-**Similarity Matrix S** `[N_ref × N_query]`
-```
-         Query 1  Query 2  Query 3  ...  Query Nq
-        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Ref 1  │  0.93    0.15     0.22    ...  0.08
-Ref 2  │  0.12    0.88     0.10    ...  0.05
- ...   │
-Ref Nr │  0.05    0.07     0.92    ...  0.95
-```
+This is central to the evaluation path:
 
-**Match Matrix M** `[N_ref × N_query]` (binary)
-```
-         Query 1  Query 2  Query 3
-        ━━━━━━━━━━━━━━━━━━━━━━━
-Ref 1  │   1        0        0
-Ref 2  │   0        1        0
- ...   │
-Ref Nr │   0        0        1
+- rows = reference/database images
+- columns = query images
+- larger values = more similar
+
+In [demo.py](../demo.py), the common path is:
+
+```python
+db_D_holistic = db_D_holistic / np.linalg.norm(db_D_holistic, axis=1, keepdims=True)
+q_D_holistic = q_D_holistic / np.linalg.norm(q_D_holistic, axis=1, keepdims=True)
+S = np.matmul(db_D_holistic, q_D_holistic.transpose())
 ```
 
----
+### Reference Map
 
-## Extension Points
+The live pipeline replaces the raw dataset-plus-ground-truth setup with a reusable serialized map.
 
-### Extension Type 1: New Feature Descriptor
+That object lives in [live_vpr/database.py](../live_vpr/database.py):
 
-**Location:** `feature_extraction/` directory  
-**Example:** Implementing a custom feature extractor
-
-**Steps:**
-1. Create file `feature_extraction/feature_extractor_mymethod.py`
-2. Implement class following the interface:
-   ```python
-   class MyMethodFeatureExtractor:
-       def compute_features(self, images):
-           # images: list of numpy arrays (images)
-           # return: numpy array [N × D] descriptors
-           pass
-   ```
-3. Add conditional in demo.py around line 52-90:
-   ```python
-   elif args.descriptor == 'MyMethod':
-       from feature_extraction.feature_extractor_mymethod import MyMethodFeatureExtractor
-       feature_extractor = MyMethodFeatureExtractor()
-   ```
-4. Add 'MyMethod' to argument choices in argparse
-
-**To Add Your Descriptor:**
-- Implement the `compute_features(images)` method
-- Ensure output is normalized if using cosine similarity
-- Return shape `[N, D]` where N=number of images, D=descriptor dimension
-
----
-
-### Extension Type 2: New Matching Strategy
-
-**Location:** `matching/matching.py` module  
-**Example:** k-NN matching strategy
-
-**Steps:**
-1. Add new function to matching module:
-   ```python
-   def knn_match(S, k=5):
-       """k-NN matching: each query matches best k database images if above threshold"""
-       M = np.zeros_like(S, dtype=bool)
-       for j in range(S.shape[1]):  # for each query
-           top_k_indices = np.argsort(S[:, j])[-k:]
-           M[top_k_indices, j] = True
-       return M
-   ```
-2. Call from demo.py matching section (line ~135-140):
-   ```python
-   M = matching.knn_match(S, k=5)
-   ```
-
-**What to implement:**
-- Takes similarity matrix S as input
-- Returns binary match matrix M
-- Must handle edge cases (all low similarities, etc.)
-
----
-
-### Extension Type 3: New Evaluation Metric
-
-**Location:** `evaluation/metrics.py`  
-**Example:** Mean Average Precision (mAP)
-
-**Steps:**
-1. Add new metric function:
-   ```python
-   def mean_average_precision(S, GT):
-       """Compute mAP - average of per-query AP"""
-       ap_scores = []
-       for j in range(S.shape[1]):
-           # Compute average precision for query j
-           ap = compute_ap(S[:, j], GT[:, j])
-           ap_scores.append(ap)
-       return np.mean(ap_scores)
-   ```
-2. Call from demo.py evaluation section (line ~142-165):
-   ```python
-   mAP = metrics.mean_average_precision(S, GThard)
-   print(f"mAP: {mAP:.4f}")
-   ```
-
-**What to implement:**
-- Compute metric from similarity matrix S and ground truth GT
-- Return scalar value or curve (depending on metric)
-- Consider both GThard and GTsoft
-
----
-
-### Extension Type 4: New Dataset
-
-**Location:** `datasets/load_dataset.py`  
-**Example:** Custom private dataset
-
-**Steps:**
-1. Add new dataset class:
-   ```python
-   class CustomDataset:
-       def __init__(self, data_path):
-           self.data_path = data_path
-       
-       def load(self):
-           # Load images from disk
-           imgs_db = load_images(f"{self.data_path}/database")
-           imgs_q = load_images(f"{self.data_path}/queries")
-           GThard = load_ground_truth(f"{self.data_path}/gt_hard.txt")
-           GTsoft = load_ground_truth(f"{self.data_path}/gt_soft.txt")
-           return imgs_db, imgs_q, GThard, GTsoft
-   ```
-2. Add CLI option in argparse:
-   ```python
-   parser.add_argument('--dataset', choices=['GardensPoint', 'StLucia', 'SFU', 'Custom'],
-                       default='GardensPoint')
-   ```
-3. Add loading logic:
-   ```python
-   elif args.dataset == 'Custom':
-       dataset = CustomDataset('./path/to/dataset')
-       imgs_db, imgs_q, GThard, GTsoft = dataset.load()
-   ```
-
-**Data format required:**
-- `imgs_db`: List/array of images (numpy arrays or PIL Images)
-- `imgs_q`: List/array of query images
-- `GThard`: Binary ground truth matrix `[N_ref × N_query]`
-- `GTsoft`: Binary ground truth matrix `[N_ref × N_query]`
-- GThard and GTsoft indicate which matches are correct
-
----
-
-## File Structure
-
-```
-VPR_Tutorial/
-├── demo.py (← main entry point, orchestrates pipeline)
-├── demo.ipynb (← Jupyter notebook version)
-├── requirements.txt (← dependencies)
-├── setup.py
-├── README.md
-│
-├── datasets/
-│   ├── __init__.py
-│   ├── load_dataset.py (← Dataset loading classes)
-│   │   ├── GardensPointDataset
-│   │   ├── StLuciaDataset
-│   │   └── SFUDataset
-│   └── __pycache__/
-│
-├── feature_extraction/ (← Feature extractors - EXTEND HERE FOR NEW DESCRIPTORS)
-│   ├── __init__.py
-│   ├── feature_extractor.py (← Base class)
-│   ├── feature_extractor_holistic.py (← HDCDELF, AlexNet, SAD)
-│   ├── feature_extractor_patchnetvlad.py (← NetVLAD, PatchNetVLAD)
-│   ├── feature_extractor_cosplace.py (← CosPlace descriptor)
-│   ├── feature_extractor_eigenplaces.py (← EigenPlaces descriptor)
-│   ├── feature_extractor_local.py (← Local features)
-│   └── __pycache__/
-│
-├── matching/ (← Matching strategies - EXTEND HERE FOR NEW MATCHING)
-│   ├── __init__.py
-│   ├── matching.py (← best_match_per_query, thresholding)
-│   └── __pycache__/
-│
-├── evaluation/ (← Evaluation metrics - EXTEND HERE FOR NEW METRICS)
-│   ├── __init__.py
-│   ├── metrics.py (← createPR, recallAt100precision, recallAtK)
-│   ├── show_correct_and_wrong_matches.py (← visualization)
-│   └── __pycache__/
-│
-├── feature_aggregation/
-│   ├── __init__.py
-│   ├── hdc.py (← Holistic Descriptor Combination)
-│   └── __pycache__/
-│
-├── patchnetvlad/ (← PatchNetVLAD model & configs)
-│   ├── tools.py
-│   ├── configs/
-│   │   ├── netvlad_extract.ini
-│   │   └── speed.ini
-│   └── ...
-│
-├── images/ (← Sample images for testing)
-│   └── GardensPoint/
-│       ├── day_left/
-│       ├── day_right/
-│       └── night_right/
-│
-├── output_images/ (← Results and visualizations)
-│   └── ...
-│
-└── data/ (← Benchmark datasets - usually downloaded separately)
-    ├── GardensPoint/
-    ├── StLucia/
-    └── SFU/
+```python
+@dataclass
+class ReferenceMap:
+    descriptors: np.ndarray
+    image_paths: list[str]
+    metadata: dict[str, Any]
 ```
 
----
+This is what the live system loads at runtime.
 
-## How to Run
+## 5. The Original Tutorial Flow
 
-### Basic Usage
-```bash
-# Run with default settings (HDC-DELF on GardensPoint)
-python demo.py
+If you want to understand the repo from first principles, start here.
 
-# Specify descriptor
-python demo.py --descriptor NetVLAD
-python demo.py --descriptor CosPlace
-python demo.py --descriptor EigenPlaces
-python demo.py --descriptor PatchNetVLAD
+### Step 1: Load a dataset
 
-# Specify dataset
-python demo.py --dataset StLucia
-python demo.py --dataset SFU
+In [demo.py](../demo.py), the dataset is chosen by CLI and loaded from [datasets/load_dataset.py](../datasets/load_dataset.py).
 
-# Combine options
-python demo.py --descriptor CosPlace --dataset GardensPoint
+Example:
+
+```python
+if args.dataset == 'GardensPoint':
+    dataset = GardensPointDataset()
+
+imgs_db, imgs_q, GThard, GTsoft = dataset.load()
 ```
 
-### Available Options
+Dataset loaders return:
+
+- `imgs_db`: reference images
+- `imgs_q`: query images
+- `GThard`: strict ground truth
+- `GTsoft`: relaxed ground truth used by some metrics
+
+### Step 2: Extract descriptors
+
+The descriptor is chosen in [demo.py](../demo.py) and implemented in [feature_extraction/](../feature_extraction).
+
+Common examples:
+
+- [feature_extractor_cosplace.py](../feature_extraction/feature_extractor_cosplace.py)
+- [feature_extractor_eigenplaces.py](../feature_extraction/feature_extractor_eigenplaces.py)
+- [feature_extractor_holistic.py](../feature_extraction/feature_extractor_holistic.py)
+- [feature_extractor_patchnetvlad.py](../feature_extraction/feature_extractor_patchnetvlad.py)
+
+Each extractor exposes the same main interface:
+
+```python
+features = extractor.compute_features(images)
 ```
---descriptor: HDC-DELF, AlexNet, NetVLAD, PatchNetVLAD, CosPlace, EigenPlaces, SAD
---dataset: GardensPoint, StLucia, SFU
+
+### Step 3: Compute similarity
+
+For most global descriptors, the pipeline uses cosine similarity after L2 normalization.
+
+### Step 4: Convert similarity into matches
+
+[matching/matching.py](../matching/matching.py) contains the two key strategies:
+
+```python
+M1 = matching.best_match_per_query(S)
+M2 = matching.thresholding(S, 'auto')
 ```
 
-### Output
-- Similarity matrices visualization
-- Match matrices (binary: which images matched)
-- Precision-Recall curves
-- Metrics: AUC, R@100P, R@K values
-- Sample of correct and incorrect matches
+Use them like this:
 
----
+- `best_match_per_query`: one best database image per query
+- `thresholding`: any pair above threshold becomes a match
 
-## Key Concepts for Extension
+### Step 5: Evaluate
 
-### Descriptor Quality
-The quality of extracted features is fundamental:
-- **Good descriptor:** Similar images have high similarity scores, different images have low scores
-- **Bad descriptor:** Random or uninformative scores
+[evaluation/metrics.py](../evaluation/metrics.py) computes:
 
-### Trade-offs in Design Choices
+- precision-recall curves
+- `R@100P`
+- `R@K`
 
-**Speed vs Accuracy**
-- Holistic (fast): Single vector per image
-- Patch-based (slow): Multiple vectors per image
+The central functions are:
 
-**Complexity vs Interpretability**
-- Simple methods (SAD): Easy to understand, less accurate
-- Neural networks (CosPlace): Complex, high accuracy
+- `createPR(...)`
+- `recallAt100precision(...)`
+- `recallAtK(...)`
 
-**Memory vs Precision**
-- Low-dimensional (32D): Fast, low memory; may lose accuracy
-- High-dimensional (2048D): Slow, high memory; potentially more accurate
+For qualitative debugging, [evaluation/show_correct_and_wrong_matches.py](../evaluation/show_correct_and_wrong_matches.py) displays true positives and false positives side by side.
 
-### Customization Opportunities
+## 6. The Campus Dataset Flow
 
-1. **Change Feature Extraction**
-   - Try new neural network architectures
-   - Fine-tune existing models on your domain
-   - Combine multiple descriptors
+The campus dataset is not a separate architecture. It is a custom dataset plugged into the same evaluation pattern.
 
-2. **Change Matching Strategy**
-   - Different decision thresholds
-   - k-NN matching
-   - Graph-based approaches
-   - Geometric verification
+The important file is [datasets/load_dataset.py](../datasets/load_dataset.py), specifically `CampusDataset`.
 
-3. **Change Similarity Metric**
-   - Cosine similarity (default)
-   - Euclidean distance
-   - Learned metrics
+What it does:
 
-4. **Add New Datasets**
-   - Benchmark your descriptor on your own data
-   - Create domain-specific evaluation
+- loads `custom_dataset/day_images` as the reference database
+- loads `custom_dataset/night_images` as the query set
+- creates ground truth from filenames
+- treats `-npm`, `npmXX`, and `PXL_*` images as no-match queries
 
-5. **Implement New Metrics**
-   - More granular evaluation
-   - Domain-specific metrics
-   - Failure analysis
+The script [test_campus_dataset.py](../test_campus_dataset.py) then runs the same evaluation stages as [demo.py](../demo.py), but on your local dataset instead of GardensPoint/StLucia/SFU.
 
----
+This means:
 
-## Summary: Where to Work for Extension
+- if you understand `demo.py`, you almost understand `test_campus_dataset.py`
+- the main difference is the dataset loader and the saved plots/results
 
-| Goal | Where to Work | File |
-|------|---------------|------|
-| Add new descriptor | `feature_extraction/` | `feature_extraction_mymethod.py` |
-| Change matching logic | `matching/` | `matching.py` |
-| Add evaluation metric | `evaluation/` | `metrics.py` |
-| Add benchmark dataset | `datasets/` | `load_dataset.py` |
-| Test combinations | `demo.py` | Modify argparse and orchestration |
+## 7. The Live Pipeline
 
----
+The live system is a more modular version of the same VPR idea.
 
-## Next Steps for Continuation with Another LLM
+The best top-level file to read is [live_vpr_test.py](../live_vpr_test.py).
 
-When continuing with another LLM, provide this file along with:
-1. **What you want to implement** (new descriptor/metric/dataset)
-2. **Current blockers or questions** (if any)
-3. **Specific requirements** (constraints, datasets, metrics)
+It has two main phases:
 
-The extending LLM should:
-1. Reference this architecture guide
-2. Follow the extension patterns documented above
-3. Maintain compatibility with the existing pipeline
-4. Add proper documentation for new components
+- `build_map(...)` / `build_live_map(...)`
+- `run_online(...)`
 
----
+### 7.1 Offline Phase: Build A Map
 
-**Document Created:** March 21, 2026  
-**Project Structure Verified:** ✓  
-**Extension Points Identified:** ✓  
-**Architecture Flow Documented:** ✓  
+The map-building logic is implemented in [live_vpr/offline.py](../live_vpr/offline.py).
+
+The main class is `MapBuilder`:
+
+```python
+builder = MapBuilder(args.descriptor)
+reference_map, stats = builder.build(config)
+```
+
+Inside `build_from_paths(...)`, the flow is:
+
+```python
+images = [_load_rgb_image(path, target_size) for path in image_paths]
+descriptors = compute_global_descriptors(self.extractor, images)
+descriptors = normalize_descriptors(descriptors)
+reference_map = ReferenceMap(...)
+save_reference_map(reference_map, output_path)
+```
+
+That means a map is just:
+
+- a normalized descriptor matrix
+- the corresponding reference image paths
+- metadata such as descriptor name and target size
+
+### 7.2 Live Map Building From A Traversal
+
+If you do not already have reference images, the live pipeline can record a traversal video first and build the map after recording stops.
+
+That logic lives in [live_vpr/capture.py](../live_vpr/capture.py).
+
+There are two important pieces:
+
+- `LiveReferenceRecorder`
+- `sample_video_to_frames(...)`
+
+The recorder writes a traversal video:
+
+```python
+if recording:
+    writer.write(frame)
+    frame_count += 1
+```
+
+Then the sampler converts that video into reference images at `sample_fps`:
+
+```python
+if should_sample:
+    cv2.imwrite(str(output_path), frame)
+    saved_paths.append(str(output_path))
+```
+
+This design is useful because recording and map-building are separate concerns:
+
+- recording captures raw traversal data
+- sampling controls how dense the map becomes
+
+### 7.3 Online Phase: Localize Live Frames
+
+The online localizer lives in [live_vpr/online.py](../live_vpr/online.py).
+
+Main class:
+
+```python
+localizer = LiveLocalizer(reference_map, descriptor_name, threshold, top_k)
+```
+
+Core inference logic:
+
+```python
+descriptor = compute_global_descriptors(self.extractor, [rgb_image])
+descriptor = descriptor / (np.linalg.norm(descriptor, axis=1, keepdims=True) + 1e-8)
+similarities = (self.reference_map.descriptors @ descriptor.T).reshape(-1)
+```
+
+So the live phase is still doing the familiar VPR computation:
+
+- encode one query frame
+- compare it to the reference descriptors
+- rank the results
+
+The main difference is that it does not compute PR curves or recall metrics during the session. It just returns:
+
+- best match
+- best score
+- top-k indices and scores
+- thresholded `recognized` / `unknown` decision
+
+### 7.4 Live UI And Saved Inference Reports
+
+The UI code lives in [live_vpr/ui.py](../live_vpr/ui.py).
+
+Main class:
+
+```python
+display = LiveDisplay(reference_map=reference_map, show_top_k=not args.hide_top_k)
+```
+
+There are two render paths:
+
+- `render(...)`: draws the on-screen live overlay
+- `render_inference_report(...)`: creates the padded saved report image for each inference
+
+This is where you modify:
+
+- status text
+- top-k thumbnails
+- labels like `Live query frame` and `Best reference match`
+- margins / panel sizes
+
+### 7.5 Camera And Stream Sources
+
+All capture-source logic is centralized in [live_vpr/sources.py](../live_vpr/sources.py).
+
+The key abstraction is:
+
+```python
+frame_source = OpenCVFrameSource(source, width=args.frame_width, height=args.frame_height)
+```
+
+That class supports:
+
+- webcam indexes like `0` or `1`
+- saved aliases like `phone` or `turbopi`
+- stream URLs
+- video file paths when wrapped by higher-level modes
+
+This is also where source aliases are saved to:
+
+- `artifacts/live_vpr_sources.json`
+
+If camera selection or stream resolution is broken, start with this file.
+
+## 8. How The CLI Ties It Together
+
+[live_vpr_test.py](../live_vpr_test.py) is the glue layer. It does not contain the heavy logic itself; it wires together the modular pieces.
+
+Good examples:
+
+- `build_map(...)` uses `MapBuilder`
+- `build_live_map(...)` uses `LiveReferenceRecorder`, `sample_video_to_frames`, and `MapBuilder`
+- `run_online(...)` uses `ReferenceMap`, `LiveLocalizer`, `OpenCVFrameSource`, and `LiveDisplay`
+
+This is the right file to edit when:
+
+- adding a new mode
+- changing CLI arguments
+- changing the overall flow between modules
+
+## 9. Common “Where Do I Change X?” Questions
+
+### Add a new dataset
+
+Work in:
+
+- [datasets/load_dataset.py](../datasets/load_dataset.py)
+- maybe [demo.py](../demo.py) or [test_campus_dataset.py](../test_campus_dataset.py)
+
+Add a loader class with:
+
+```python
+def load(self) -> Tuple[List[np.ndarray], List[np.ndarray], np.ndarray, np.ndarray]:
+```
+
+### Add a new descriptor
+
+Work in:
+
+- [feature_extraction/](../feature_extraction)
+- [live_vpr/extractors.py](../live_vpr/extractors.py)
+- maybe [demo.py](../demo.py) and [test_campus_dataset.py](../test_campus_dataset.py)
+
+You need:
+
+- an extractor class with `compute_features(images)`
+- registration in `SUPPORTED_DESCRIPTORS`
+- a branch in `create_feature_extractor(...)`
+
+### Change live-match behavior
+
+Work in:
+
+- [live_vpr/online.py](../live_vpr/online.py)
+
+That is where thresholding, top-k selection, and similarity ranking happen.
+
+### Change live overlays or saved inference images
+
+Work in:
+
+- [live_vpr/ui.py](../live_vpr/ui.py)
+
+### Change source aliases / stream handling
+
+Work in:
+
+- [live_vpr/sources.py](../live_vpr/sources.py)
+
+### Change benchmark metrics
+
+Work in:
+
+- [evaluation/metrics.py](../evaluation/metrics.py)
+
+### Change map serialization format
+
+Work in:
+
+- [live_vpr/database.py](../live_vpr/database.py)
+
+## 10. Recommended Reading Path For A New Developer
+
+If you are onboarding this week, use this order:
+
+1. Read [demo.py](../demo.py) and understand the classic evaluation flow.
+2. Read [datasets/load_dataset.py](../datasets/load_dataset.py) to understand how images and ground truth enter the system.
+3. Read [matching/matching.py](../matching/matching.py) and [evaluation/metrics.py](../evaluation/metrics.py).
+4. Read [test_campus_dataset.py](../test_campus_dataset.py) to see how the tutorial flow was adapted for the campus data.
+5. Read [live_vpr_test.py](../live_vpr_test.py) to understand the higher-level live workflow.
+6. Read [live_vpr/offline.py](../live_vpr/offline.py), [live_vpr/online.py](../live_vpr/online.py), [live_vpr/ui.py](../live_vpr/ui.py), and [live_vpr/sources.py](../live_vpr/sources.py).
+
+After that, you should be able to answer:
+
+- how maps are built
+- how live localization works
+- where benchmark evaluation ends and demo logic begins
+- which file to edit for most common changes
+
+## 11. One Final Mental Model
+
+Almost everything in this repo reduces to the same idea:
+
+```text
+image -> descriptor -> similarity -> decision
+```
+
+The benchmark code adds:
+
+```text
+decision -> metrics -> plots
+```
+
+The live code adds:
+
+```text
+decision -> overlay -> saved report -> demo
+```
+
+If you keep that mental model in mind, the codebase becomes much easier to navigate.
