@@ -6,7 +6,7 @@ import time
 import numpy as np
 
 from .database import ReferenceMap
-from .extractors import compute_global_descriptors, create_feature_extractor
+from .extractors import compute_global_descriptors, create_feature_extractor, describe_extractor_runtime
 
 
 @dataclass
@@ -33,6 +33,7 @@ class LiveLocalizer:
         self.threshold = threshold
         self.top_k = top_k
         self.extractor = create_feature_extractor(descriptor_name)
+        self.runtime_backend = describe_extractor_runtime(self.extractor)
 
     def localize_rgb(self, rgb_image: np.ndarray) -> LocalizationResult:
         start = time.time()

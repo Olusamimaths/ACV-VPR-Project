@@ -66,6 +66,13 @@ def create_feature_extractor(descriptor_name: str) -> Any:
     raise ValueError(f"Unsupported descriptor: {descriptor_name}")
 
 
+def describe_extractor_runtime(extractor: Any) -> str:
+    device = getattr(extractor, "device", None)
+    if device is not None:
+        return str(device)
+    return "cpu"
+
+
 def compute_global_descriptors(extractor: Any, images: list[np.ndarray]) -> np.ndarray:
     descriptors = extractor.compute_features(images)
 

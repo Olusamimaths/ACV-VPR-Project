@@ -37,6 +37,7 @@ from live_vpr import (
     sample_video_to_frames,
     save_source_alias,
 )
+from live_vpr.extractors import describe_extractor_runtime
 
 
 LEGACY_MODE_ALIASES = {
@@ -331,6 +332,7 @@ def run_online(args: argparse.Namespace, use_video: bool = False) -> None:
             "Install the project requirements before running online localization."
         ) from exc
     display = LiveDisplay(reference_map=reference_map, show_top_k=not args.hide_top_k)
+    print(f"Runtime backend: {describe_extractor_runtime(localizer.extractor)}")
 
     source = args.video if use_video else args.source
     if source is None:
@@ -407,11 +409,15 @@ def run_online(args: argparse.Namespace, use_video: bool = False) -> None:
 
             if should_run_inference and args.save_inference_images and last_result is not None:
                 save_inference_image(
-                    rendered=rendered,
+                    display=display,
+                    query_frame=frame,
                     inference_result=last_result,
                     inference_index=len(inference_results),
                     threshold=localizer.threshold,
                     output_dir=inference_stats_dir,
+                    fps=fps,
+                    result_age_ms=result_age_ms,
+                    process_fps=args.process_fps,
                 )
 
             if writer is None and args.output_video:
@@ -490,11 +496,15 @@ def print_summary(results, threshold: float, displayed_frames: int | None = None
 
 
 def save_inference_image(
-    rendered,
+    display,
+    query_frame,
     inference_result,
     inference_index: int,
     threshold: float,
     output_dir: Path,
+    fps: float,
+    result_age_ms: float,
+    process_fps: float | None,
 ) -> None:
     cv2 = _import_cv2()
     safe_score = f"{inference_result.best_score:.3f}".replace("-", "neg")
@@ -504,7 +514,16 @@ def save_inference_image(
         f"score_{safe_score}_th_{threshold:.2f}.jpg"
     )
     output_path = output_dir / filename
-    cv2.imwrite(str(output_path), rendered)
+    export_canvas = display.render_inference_report(
+        query_frame_bgr=query_frame,
+        result=inference_result,
+        threshold=threshold,
+        fps=fps,
+        result_age_ms=result_age_ms,
+        process_fps=process_fps,
+        inference_index=inference_index,
+    )
+    cv2.imwrite(str(output_path), export_canvas)
 
 
 def build_parser() -> argparse.ArgumentParser:
