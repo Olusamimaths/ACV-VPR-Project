@@ -64,10 +64,41 @@ Uses the YAML config, then overrides selected values on the command line.
 ### Config Sections In `configs/live_vpr.yaml`
 
 - `general`: mode, descriptor, map path, data dir
+- `artifacts`: timestamped run-folder behavior
 - `source`: webcam index, stream URL, frame size, mirror
 - `map_build`: capture directory, recording path, sample rate, saved-image downsampling
 - `inference`: threshold, top-k, processing cadence, output folders
 - `search`: exact / HNSW / FAISS backend settings
+
+### Artifact Grouping
+
+By default, runtime outputs under `artifacts/` are grouped into a timestamped run folder such as:
+
+```text
+artifacts/runs/20260422_153045_live_cosplace_phone/
+```
+
+This keeps inference reports, captures, recordings, and generated maps from different runs separate.
+
+Useful controls:
+
+- `--artifact_root`: change the root folder used for grouped runs
+- `--run_name`: provide your own descriptive run-folder name
+- `--flat_artifacts`: disable grouping and write directly to the configured paths
+
+Example:
+
+### Bash
+
+```bash
+bash scripts/live_vpr_cli.sh live --source phone --run_name phone_lab_walk
+```
+
+### Python
+
+```bash
+python live_vpr_test.py --mode live --source phone --run_name phone_lab_walk
+```
 
 ## 3. Check A Source
 
@@ -492,6 +523,9 @@ python live_vpr_test.py --mode live --source turbopi --map_path artifacts/live_m
 ## 13. Common Useful Flags
 
 - `--config`: load a YAML config file before applying CLI overrides
+- `--artifact_root`: root folder for grouped run artifacts
+- `--run_name`: custom name for the current artifact session
+- `--flat_artifacts`: disable timestamped run folders
 - `--descriptor`: choose descriptor backend
 - `--map_path`: input or output reference map path
 - `--data_dir`: reference-image directory for folder-based map building

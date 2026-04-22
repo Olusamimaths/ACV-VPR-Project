@@ -18,6 +18,7 @@ import time
 import numpy as np
 
 from live_vpr import (
+    apply_artifact_session_to_args,
     FrameSamplingConfig,
     LiveDisplay,
     LiveLocalizer,
@@ -36,8 +37,10 @@ from live_vpr import (
     load_source_aliases,
     load_reference_map,
     parse_args_with_config,
+    publish_built_reference_map,
     probe_capture_source,
     resolve_capture_source,
+    resolve_reference_map_input,
     sample_video_to_frames,
     save_source_alias,
 )
@@ -115,9 +118,12 @@ def print_source_resolution(source: str | int) -> None:
 
 
 def build_map(args: argparse.Namespace) -> None:
+    artifact_session = apply_artifact_session_to_args(args, "build_map")
     print(f"\n{'=' * 68}")
     print("OFFLINE PHASE: MAP BUILDING")
     print(f"{'=' * 68}")
+    if artifact_session is not None:
+        print(f"Artifact session: {artifact_session.session_dir}")
     print(f"Reference directory: {args.data_dir}")
     print(f"Descriptor: {args.descriptor}")
     print(f"Output map: {args.map_path}")
@@ -145,10 +151,17 @@ def build_map(args: argparse.Namespace) -> None:
     print(f"Load time: {stats['load_time_s']:.2f}s")
     print(f"Feature extraction time: {stats['extraction_time_s']:.2f}s")
     print(f"Average extraction time: {stats['avg_extraction_ms']:.1f}ms/image")
-    print(f"Saved to: {Path(args.map_path).expanduser().resolve()}")
+    saved_map, stable_map = publish_built_reference_map(
+        args.map_path,
+        getattr(args, "_artifact_requested_map_path", None),
+    )
+    print(f"Saved to: {saved_map}")
+    if stable_map is not None:
+        print(f"Stable map alias updated: {stable_map}")
 
 
 def build_live_map(args: argparse.Namespace, use_video: bool = False) -> None:
+    artifact_session = apply_artifact_session_to_args(args, "build_live_map", use_video=use_video)
     source = args.video if use_video else args.source
     if source is None:
         raise ValueError("A capture source is required for live map building.")
@@ -156,6 +169,8 @@ def build_live_map(args: argparse.Namespace, use_video: bool = False) -> None:
     print(f"\n{'=' * 68}")
     print("OFFLINE PHASE: LIVE MAP BUILDING")
     print(f"{'=' * 68}")
+    if artifact_session is not None:
+        print(f"Artifact session: {artifact_session.session_dir}")
     print(f"Capture source: {source}")
     if not use_video:
         print_source_resolution(source)
@@ -234,7 +249,13 @@ def build_live_map(args: argparse.Namespace, use_video: bool = False) -> None:
     print(f"Load time: {stats['load_time_s']:.2f}s")
     print(f"Feature extraction time: {stats['extraction_time_s']:.2f}s")
     print(f"Average extraction time: {stats['avg_extraction_ms']:.1f}ms/image")
-    print(f"Saved to: {Path(args.map_path).expanduser().resolve()}")
+    saved_map, stable_map = publish_built_reference_map(
+        args.map_path,
+        getattr(args, "_artifact_requested_map_path", None),
+    )
+    print(f"Saved to: {saved_map}")
+    if stable_map is not None:
+        print(f"Stable map alias updated: {stable_map}")
 
 
 def check_source(args: argparse.Namespace, use_video: bool = False) -> None:
@@ -253,7 +274,10 @@ def check_source(args: argparse.Namespace, use_video: bool = False) -> None:
 
 
 def list_sources(args: argparse.Namespace) -> None:
+    artifact_session = apply_artifact_session_to_args(args, "list_sources") if args.source_snapshot_dir else None
     print(f"Scanning camera indexes 0..{args.source_scan_max}")
+    if artifact_session is not None:
+        print(f"Artifact session: {artifact_session.session_dir}")
     if args.source_snapshot_dir:
         print(f"Saving preview snapshots to: {Path(args.source_snapshot_dir).expanduser().resolve()}")
 
@@ -334,14 +358,20 @@ def create_video_writer(output_video: str | None, frame_shape: tuple[int, int, i
 
 def run_online(args: argparse.Namespace, use_video: bool = False) -> None:
     cv2 = _import_cv2()
+    artifact_session = apply_artifact_session_to_args(args, "video" if use_video else "live", use_video=use_video)
 
-    reference_map = load_reference_map(args.map_path)
-    reference_map.metadata["map_path"] = str(Path(args.map_path).expanduser().resolve())
+    resolved_map_path = resolve_reference_map_input(args.map_path)
+    if resolved_map_path != Path(args.map_path).expanduser().resolve():
+        print(f"Requested map not found, using latest built map instead: {resolved_map_path}")
+    reference_map = load_reference_map(resolved_map_path)
+    reference_map.metadata["map_path"] = str(resolved_map_path)
     descriptor = resolve_runtime_descriptor(reference_map, args.descriptor)
     search_config = SearchConfig.from_namespace(args)
     print(f"\n{'=' * 68}")
     print("ONLINE PHASE: LIVE LOCALIZATION")
     print(f"{'=' * 68}")
+    if artifact_session is not None:
+        print(f"Artifact session: {artifact_session.session_dir}")
     print_reference_map_summary(reference_map)
     print_search_configuration(search_config)
 
@@ -376,7 +406,6 @@ def run_online(args: argparse.Namespace, use_video: bool = False) -> None:
     writer = None
     inference_results = []
     snapshot_dir = Path(args.snapshot_dir).expanduser().resolve()
-    snapshot_dir.mkdir(parents=True, exist_ok=True)
     inference_stats_dir = Path(args.inference_stats_dir).expanduser().resolve()
     if args.save_inference_images:
         inference_stats_dir.mkdir(parents=True, exist_ok=True)
@@ -464,6 +493,7 @@ def run_online(args: argparse.Namespace, use_video: bool = False) -> None:
                 state = "ON" if inference_active else "PAUSED"
                 print(f"Inference: {state}")
             if key == ord("s"):
+                snapshot_dir.mkdir(parents=True, exist_ok=True)
                 filename = snapshot_dir / f"capture_{int(time.time())}.jpg"
                 cv2.imwrite(str(filename), frame)
                 print(f"Saved frame to {filename}")
@@ -578,6 +608,24 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         help="YAML configuration file to load before applying CLI overrides",
     )
+    parser.add_argument(
+        "--artifact_root",
+        type=str,
+        default="artifacts/runs",
+        help="Root directory used for timestamped run folders when artifact grouping is enabled",
+    )
+    parser.add_argument(
+        "--run_name",
+        type=str,
+        help="Optional custom run name for the grouped artifact folder",
+    )
+    parser.add_argument(
+        "--flat_artifacts",
+        dest="group_artifacts_by_run",
+        action="store_false",
+        help="Disable timestamped run folders and write outputs directly to the configured paths",
+    )
+    parser.set_defaults(group_artifacts_by_run=True)
     parser.add_argument(
         "--mode",
         default=None,

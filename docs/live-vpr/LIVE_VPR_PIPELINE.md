@@ -31,6 +31,8 @@ The output is a saved `.npz` map containing:
 - reference image paths
 - metadata such as descriptor, target size, and map provenance
 
+When artifact grouping is enabled, generated outputs are placed under a timestamped run folder inside `artifacts/runs/` so each map-building session stays separate. The build step also updates a stable map alias under `artifacts/live_maps/` so later live inference can still use the most recent map through the usual command flow.
+
 ### Online Phase
 
 Use a camera, stream, or video to localize incoming frames against that saved map.
@@ -42,6 +44,8 @@ The output is:
 - a top-k ranked list
 - a thresholded `MATCH` or `UNKNOWN` decision
 - an on-screen overlay and optional saved inference reports
+
+Those runtime outputs are also grouped into a per-run folder by default, which keeps captures, inference reports, and annotated videos from different sessions separated.
 
 ## 2. End-To-End Flow
 

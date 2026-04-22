@@ -1,6 +1,12 @@
 """Modular live VPR pipeline components."""
 
 from .config import DEFAULT_CONFIG_PATH, load_config_defaults, parse_args_with_config
+from .artifacts import (
+    apply_artifact_session_to_args,
+    prepare_artifact_session,
+    publish_built_reference_map,
+    resolve_reference_map_input,
+)
 from .capture import (
     FrameSamplingConfig,
     FrameSamplingResult,
@@ -32,6 +38,7 @@ from .ui import LiveDisplay
 
 __all__ = [
     "DEFAULT_CONFIG_PATH",
+    "apply_artifact_session_to_args",
     "FrameSamplingConfig",
     "FrameSamplingResult",
     "LiveDisplay",
@@ -58,7 +65,10 @@ __all__ = [
     "load_source_aliases",
     "parse_args_with_config",
     "parse_capture_source",
+    "prepare_artifact_session",
+    "publish_built_reference_map",
     "probe_capture_source",
+    "resolve_reference_map_input",
     "resolve_capture_source",
     "sample_video_to_frames",
     "save_source_alias",

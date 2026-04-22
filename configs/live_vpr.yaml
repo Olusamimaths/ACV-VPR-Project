@@ -9,6 +9,11 @@ general:
   recursive: false
   use_video_for_live_build: false
 
+artifacts:
+  artifact_root: artifacts/runs
+  group_artifacts_by_run: true
+  run_name: null
+
 source:
   source: "0"
   video: null
