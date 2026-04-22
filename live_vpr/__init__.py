@@ -3,6 +3,7 @@
 from .config import DEFAULT_CONFIG_PATH, load_config_defaults, parse_args_with_config
 from .artifacts import (
     apply_artifact_session_to_args,
+    initialize_artifacts_environment,
     prepare_artifact_session,
     publish_built_reference_map,
     resolve_reference_map_input,
@@ -59,6 +60,7 @@ __all__ = [
     "create_search_backend",
     "delete_source_alias",
     "get_source_aliases_path",
+    "initialize_artifacts_environment",
     "load_config_defaults",
     "load_reference_map",
     "list_available_capture_sources",

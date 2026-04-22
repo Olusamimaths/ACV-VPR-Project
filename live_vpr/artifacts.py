@@ -23,6 +23,19 @@ class ArtifactSession:
         return self.root_dir / self.run_name
 
 
+def initialize_artifacts_environment(artifact_root: str | None = None) -> None:
+    DEFAULT_ARTIFACTS_ROOT.mkdir(parents=True, exist_ok=True)
+    (DEFAULT_ARTIFACTS_ROOT / "live_maps").mkdir(parents=True, exist_ok=True)
+
+    if artifact_root:
+        root_dir = Path(artifact_root).expanduser()
+        if not root_dir.is_absolute():
+            root_dir = (REPO_ROOT / root_dir).resolve()
+        else:
+            root_dir = root_dir.resolve()
+        root_dir.mkdir(parents=True, exist_ok=True)
+
+
 def _slugify(value: str, *, max_len: int = 36) -> str:
     text = re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip().lower()).strip("-")
     if not text:

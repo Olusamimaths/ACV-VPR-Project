@@ -20,6 +20,7 @@ import numpy as np
 from live_vpr import (
     apply_artifact_session_to_args,
     FrameSamplingConfig,
+    initialize_artifacts_environment,
     LiveDisplay,
     LiveLocalizer,
     LiveReferenceRecorder,
@@ -932,6 +933,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     parser = build_parser()
     args = parse_args_with_config(parser)
+    initialize_artifacts_environment(getattr(args, "artifact_root", None))
     if not args.mode:
         raise ValueError("--mode is required unless it is provided by the YAML config file")
     args.mode = normalize_mode(args.mode)
