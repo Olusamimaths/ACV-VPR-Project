@@ -6,8 +6,8 @@ This folder now has a few documents with different purposes. If you are new to t
 
 If you want the best first overview, read:
 
-1. [PROJECT_ARCHITECTURE_GUIDE.md](./PROJECT_ARCHITECTURE_GUIDE.md)
-2. [LIVE_VPR_PIPELINE.md](./LIVE_VPR_PIPELINE.md)
+1. [PROJECT_ARCHITECTURE_GUIDE.md](./architecture/PROJECT_ARCHITECTURE_GUIDE.md)
+2. [LIVE_VPR_PIPELINE.md](./live-vpr/LIVE_VPR_PIPELINE.md)
 
 That gives you:
 
@@ -21,7 +21,7 @@ That gives you:
 
 Open:
 
-- [PROJECT_ARCHITECTURE_GUIDE.md](./PROJECT_ARCHITECTURE_GUIDE.md)
+- [PROJECT_ARCHITECTURE_GUIDE.md](./architecture/PROJECT_ARCHITECTURE_GUIDE.md)
 
 Use this for:
 
@@ -34,7 +34,7 @@ Use this for:
 
 Open:
 
-- [LIVE_VPR_PIPELINE.md](./LIVE_VPR_PIPELINE.md)
+- [LIVE_VPR_PIPELINE.md](./live-vpr/LIVE_VPR_PIPELINE.md)
 
 Use this for:
 
@@ -48,7 +48,7 @@ Use this for:
 
 Open:
 
-- [LIVE_VPR_COMMANDS.md](./LIVE_VPR_COMMANDS.md)
+- [LIVE_VPR_COMMANDS.md](./live-vpr/LIVE_VPR_COMMANDS.md)
 
 Use this for:
 
@@ -61,7 +61,7 @@ Use this for:
 
 Open:
 
-- [LIVE_VPR_SCRIPT.md](./LIVE_VPR_SCRIPT.md)
+- [LIVE_VPR_SCRIPT.md](./live-vpr/LIVE_VPR_SCRIPT.md)
 
 Use this for:
 
@@ -74,7 +74,7 @@ Use this for:
 
 Open:
 
-- [CAMPUS_USER_GUIDE.md](./CAMPUS_USER_GUIDE.md)
+- [CAMPUS_USER_GUIDE.md](./live-vpr/CAMPUS_USER_GUIDE.md)
 
 Use this for:
 
@@ -87,7 +87,7 @@ Use this for:
 
 Open:
 
-- [VPR_EVALUATION_FLOW.md](./VPR_EVALUATION_FLOW.md)
+- [VPR_EVALUATION_FLOW.md](./architecture/VPR_EVALUATION_FLOW.md)
 
 Use this for:
 
@@ -101,27 +101,27 @@ Use this for:
 
 ### New Developer
 
-1. [PROJECT_ARCHITECTURE_GUIDE.md](./PROJECT_ARCHITECTURE_GUIDE.md)
-2. [LIVE_VPR_PIPELINE.md](./LIVE_VPR_PIPELINE.md)
-3. [LIVE_VPR_COMMANDS.md](./LIVE_VPR_COMMANDS.md)
+1. [PROJECT_ARCHITECTURE_GUIDE.md](./architecture/PROJECT_ARCHITECTURE_GUIDE.md)
+2. [LIVE_VPR_PIPELINE.md](./live-vpr/LIVE_VPR_PIPELINE.md)
+3. [LIVE_VPR_COMMANDS.md](./live-vpr/LIVE_VPR_COMMANDS.md)
 
 ### Demo / Presentation Prep
 
-1. [LIVE_VPR_COMMANDS.md](./LIVE_VPR_COMMANDS.md)
-2. [LIVE_VPR_SCRIPT.md](./LIVE_VPR_SCRIPT.md)
-3. [CAMPUS_USER_GUIDE.md](./CAMPUS_USER_GUIDE.md)
+1. [LIVE_VPR_COMMANDS.md](./live-vpr/LIVE_VPR_COMMANDS.md)
+2. [LIVE_VPR_SCRIPT.md](./live-vpr/LIVE_VPR_SCRIPT.md)
+3. [CAMPUS_USER_GUIDE.md](./live-vpr/CAMPUS_USER_GUIDE.md)
 
 ### Research / Evaluation Work
 
-1. [PROJECT_ARCHITECTURE_GUIDE.md](./PROJECT_ARCHITECTURE_GUIDE.md)
-2. [VPR_EVALUATION_FLOW.md](./VPR_EVALUATION_FLOW.md)
-3. [CAMPUS_USER_GUIDE.md](./CAMPUS_USER_GUIDE.md)
+1. [PROJECT_ARCHITECTURE_GUIDE.md](./architecture/PROJECT_ARCHITECTURE_GUIDE.md)
+2. [VPR_EVALUATION_FLOW.md](./architecture/VPR_EVALUATION_FLOW.md)
+3. [CAMPUS_USER_GUIDE.md](./live-vpr/CAMPUS_USER_GUIDE.md)
 
 ## One-Sentence Summary Of Each Doc
 
-- [PROJECT_ARCHITECTURE_GUIDE.md](./PROJECT_ARCHITECTURE_GUIDE.md): the main onboarding and codebase map
-- [LIVE_VPR_PIPELINE.md](./LIVE_VPR_PIPELINE.md): how the modular live system works
-- [LIVE_VPR_SCRIPT.md](./LIVE_VPR_SCRIPT.md): how to use the bash wrapper
-- [LIVE_VPR_COMMANDS.md](./LIVE_VPR_COMMANDS.md): copy-paste command cookbook
-- [CAMPUS_USER_GUIDE.md](./CAMPUS_USER_GUIDE.md): how to use the campus dataset in evaluation and live workflows
-- [VPR_EVALUATION_FLOW.md](./VPR_EVALUATION_FLOW.md): metric and evaluation logic reference
+- [PROJECT_ARCHITECTURE_GUIDE.md](./architecture/PROJECT_ARCHITECTURE_GUIDE.md): the main onboarding and codebase map
+- [LIVE_VPR_PIPELINE.md](./live-vpr/LIVE_VPR_PIPELINE.md): how the modular live system works
+- [LIVE_VPR_SCRIPT.md](./live-vpr/LIVE_VPR_SCRIPT.md): how to use the bash wrapper
+- [LIVE_VPR_COMMANDS.md](./live-vpr/LIVE_VPR_COMMANDS.md): copy-paste command cookbook
+- [CAMPUS_USER_GUIDE.md](./live-vpr/CAMPUS_USER_GUIDE.md): how to use the campus dataset in evaluation and live workflows
+- [VPR_EVALUATION_FLOW.md](./architecture/VPR_EVALUATION_FLOW.md): metric and evaluation logic reference

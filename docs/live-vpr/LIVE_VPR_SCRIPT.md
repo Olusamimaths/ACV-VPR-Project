@@ -1,10 +1,10 @@
 # Live VPR Launcher Script
 
-This document explains the bash launcher at [scripts/live_vpr_cli.sh](../scripts/live_vpr_cli.sh).
+This document explains the bash launcher at [scripts/live_vpr_cli.sh](../../scripts/live_vpr_cli.sh).
 
 Use this guide if you want the shortest way to run the project day to day.
 
-The launcher is a thin wrapper around [live_vpr_test.py](../live_vpr_test.py). It does not implement VPR logic itself. It simply:
+The launcher is a thin wrapper around [live_vpr_test.py](../../live_vpr_test.py). It does not implement VPR logic itself. It simply:
 
 - chooses a high-level command
 - fills in defaults from environment variables
@@ -164,7 +164,7 @@ bash scripts/live_vpr_cli.sh live
 
 ## 5. Passing Extra Arguments
 
-Any extra arguments after the launcher command are forwarded directly to [live_vpr_test.py](../live_vpr_test.py).
+Any extra arguments after the launcher command are forwarded directly to [live_vpr_test.py](../../live_vpr_test.py).
 
 Example:
 
@@ -187,9 +187,9 @@ For most users, the best pattern is:
 
 If you want to change launcher behavior, edit:
 
-- [scripts/live_vpr_cli.sh](../scripts/live_vpr_cli.sh)
+- [scripts/live_vpr_cli.sh](../../scripts/live_vpr_cli.sh)
 
 If you want to change actual VPR behavior, edit the Python code instead:
 
-- [live_vpr_test.py](../live_vpr_test.py)
-- [live_vpr/](../live_vpr)
+- [live_vpr_test.py](../../live_vpr_test.py)
+- [live_vpr/](../../live_vpr)

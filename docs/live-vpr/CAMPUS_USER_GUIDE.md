@@ -11,7 +11,7 @@ Read this if you want to answer:
 
 ## 1. What The Campus Dataset Is
 
-The campus dataset is a local day-to-night place-recognition dataset stored in [custom_dataset/](../custom_dataset).
+The campus dataset is a local day-to-night place-recognition dataset stored in [custom_dataset/](../../custom_dataset).
 
 High-level structure:
 
@@ -30,7 +30,7 @@ Unlike the original tutorial datasets, this one was collected locally and includ
 
 ## 2. How Ground Truth Works
 
-Ground truth is created by [CampusDataset](../datasets/load_dataset.py) in [datasets/load_dataset.py](../datasets/load_dataset.py).
+Ground truth is created by [CampusDataset](../../datasets/load_dataset.py) in [datasets/load_dataset.py](../../datasets/load_dataset.py).
 
 Key rules:
 
@@ -46,9 +46,9 @@ The loader also creates:
 
 ## 3. Main Campus Evaluation Script
 
-The main script is [test_campus_dataset.py](../test_campus_dataset.py).
+The main script is [test_campus_dataset.py](../../test_campus_dataset.py).
 
-It follows the same evaluation pattern as [demo.py](../demo.py):
+It follows the same evaluation pattern as [demo.py](../../demo.py):
 
 ```text
 load campus dataset
@@ -84,7 +84,7 @@ python test_campus_dataset.py --descriptor CosPlace --n_correct 2 --n_wrong 15 -
 
 ## 5. Output Files
 
-When `--save_results` is used, the campus script writes files into [output_images/](../output_images).
+When `--save_results` is used, the campus script writes files into [output_images/](../../output_images).
 
 Common outputs:
 
@@ -146,14 +146,14 @@ python live_vpr_test.py \
 
 ## 7. When To Use Which Path
 
-Use [test_campus_dataset.py](../test_campus_dataset.py) when you want:
+Use [test_campus_dataset.py](../../test_campus_dataset.py) when you want:
 
 - metrics
 - PR curves
 - recall values
 - qualitative correct/wrong match plots
 
-Use [live_vpr_test.py](../live_vpr_test.py) when you want:
+Use [live_vpr_test.py](../../live_vpr_test.py) when you want:
 
 - map building
 - webcam testing
@@ -163,12 +163,12 @@ Use [live_vpr_test.py](../live_vpr_test.py) when you want:
 
 ## 8. Common Files For Campus Work
 
-- [test_campus_dataset.py](../test_campus_dataset.py): campus benchmark script
-- [datasets/load_dataset.py](../datasets/load_dataset.py): `CampusDataset` loader
-- [live_vpr_test.py](../live_vpr_test.py): live map building and live localization
-- [live_vpr/offline.py](../live_vpr/offline.py): reference-map construction
-- [live_vpr/online.py](../live_vpr/online.py): live localization
-- [live_vpr/ui.py](../live_vpr/ui.py): on-screen and saved live results
+- [test_campus_dataset.py](../../test_campus_dataset.py): campus benchmark script
+- [datasets/load_dataset.py](../../datasets/load_dataset.py): `CampusDataset` loader
+- [live_vpr_test.py](../../live_vpr_test.py): live map building and live localization
+- [live_vpr/offline.py](../../live_vpr/offline.py): reference-map construction
+- [live_vpr/online.py](../../live_vpr/online.py): live localization
+- [live_vpr/ui.py](../../live_vpr/ui.py): on-screen and saved live results
 
 ## 9. Troubleshooting
 

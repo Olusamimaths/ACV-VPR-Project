@@ -1,0 +1,59 @@
+# Default configuration for the live VPR pipeline.
+# The CLI loads this file automatically and any explicit CLI flag overrides it.
+
+general:
+  mode: live
+  descriptor: CosPlace
+  data_dir: custom_dataset/day_images
+  map_path: artifacts/live_maps/campus_day_cosplace.npz
+  recursive: false
+  use_video_for_live_build: false
+
+source:
+  source: "0"
+  video: null
+  alias: null
+  source_scan_max: 10
+  source_snapshot_dir: null
+  frame_width: 1280
+  frame_height: 720
+  mirror: false
+
+map_build:
+  resize_width: 640
+  resize_height: 480
+  capture_dir: artifacts/reference_captures
+  recording_path: artifacts/reference_videos/live_reference_traversal.mp4
+  capture_prefix: ref
+  sample_fps: 1.0
+  capture_save_scale: 0.5
+  start_recording: false
+  max_captures: null
+  min_captures: 5
+  capture_window_name: Live VPR Map Recorder
+
+inference:
+  threshold: 0.5
+  top_k: 5
+  process_fps: 2.0
+  start_inference: false
+  hide_top_k: false
+  output_video: null
+  inference_stats_dir: artifacts/inference_stats
+  save_inference_images: true
+  snapshot_dir: artifacts/live_captures
+  window_name: Live VPR
+
+search:
+  search_backend: exact
+  search_metric: cosine
+  search_candidate_k: 50
+  search_rerank: true
+  search_hnsw_m: 16
+  search_hnsw_ef_construction: 200
+  search_hnsw_ef_search: 64
+  search_ivf_nlist: 100
+  search_ivf_nprobe: 10
+  search_pq_m: 16
+  search_pq_bits: 8
+  search_train_limit: 10000

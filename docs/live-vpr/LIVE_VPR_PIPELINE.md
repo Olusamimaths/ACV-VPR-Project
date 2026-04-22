@@ -2,7 +2,7 @@
 
 This document explains the newer live Visual Place Recognition pipeline in this repository.
 
-Read this after [PROJECT_ARCHITECTURE_GUIDE.md](./PROJECT_ARCHITECTURE_GUIDE.md) if you want a more focused explanation of the live system only.
+Read this after [PROJECT_ARCHITECTURE_GUIDE.md](../architecture/PROJECT_ARCHITECTURE_GUIDE.md) if you want a more focused explanation of the live system only.
 
 Use this document to understand:
 
@@ -68,9 +68,9 @@ webcam / phone webcam / stream / video
 
 ## 3. Main Entry Point
 
-The main entrypoint is [live_vpr_test.py](../live_vpr_test.py).
+The main entrypoint is [live_vpr_test.py](../../live_vpr_test.py).
 
-It is mostly an orchestration layer. It wires together smaller modules from [live_vpr/](../live_vpr).
+It is mostly an orchestration layer. It wires together smaller modules from [live_vpr/](../../live_vpr).
 
 The most important functions are:
 
@@ -84,9 +84,9 @@ If you want to understand the live system, read those functions first.
 
 ## 4. Module Map
 
-The modular implementation lives in [live_vpr/](../live_vpr).
+The modular implementation lives in [live_vpr/](../../live_vpr).
 
-### [live_vpr/database.py](../live_vpr/database.py)
+### [live_vpr/database.py](../../live_vpr/database.py)
 
 Owns the saved map format.
 
@@ -99,7 +99,7 @@ Important pieces:
 
 This is where the live pipeline stops thinking in terms of raw datasets and starts thinking in terms of reusable maps.
 
-### [live_vpr/extractors.py](../live_vpr/extractors.py)
+### [live_vpr/extractors.py](../../live_vpr/extractors.py)
 
 Owns descriptor creation for the live pipeline.
 
@@ -111,7 +111,7 @@ Important pieces:
 
 If you add a new live descriptor, this is one of the first files you must touch.
 
-### [live_vpr/offline.py](../live_vpr/offline.py)
+### [live_vpr/offline.py](../../live_vpr/offline.py)
 
 Owns map building from reference images.
 
@@ -129,7 +129,7 @@ descriptors = normalize_descriptors(descriptors)
 reference_map = ReferenceMap(...)
 ```
 
-### [live_vpr/capture.py](../live_vpr/capture.py)
+### [live_vpr/capture.py](../../live_vpr/capture.py)
 
 Owns traversal recording and post-record frame sampling.
 
@@ -142,7 +142,7 @@ Important pieces:
 
 This is the file to read if you want to understand the “record first, build map after stop” workflow.
 
-### [live_vpr/online.py](../live_vpr/online.py)
+### [live_vpr/online.py](../../live_vpr/online.py)
 
 Owns runtime localization against a saved map.
 
@@ -161,7 +161,7 @@ similarities = (self.reference_map.descriptors @ descriptor.T).reshape(-1)
 
 This file is where the actual live VPR decision happens.
 
-### [live_vpr/sources.py](../live_vpr/sources.py)
+### [live_vpr/sources.py](../../live_vpr/sources.py)
 
 Owns camera and stream source handling.
 
@@ -179,7 +179,7 @@ This file abstracts:
 - saved aliases like `phone` or `turbopi`
 - stream URLs
 
-### [live_vpr/ui.py](../live_vpr/ui.py)
+### [live_vpr/ui.py](../../live_vpr/ui.py)
 
 Owns the live overlay and the saved inference-report images.
 
@@ -216,8 +216,8 @@ image folder
 
 Owned by:
 
-- [live_vpr/offline.py](../live_vpr/offline.py)
-- `build_map(...)` in [live_vpr_test.py](../live_vpr_test.py)
+- [live_vpr/offline.py](../../live_vpr/offline.py)
+- `build_map(...)` in [live_vpr_test.py](../../live_vpr_test.py)
 
 ### Option B: Live Traversal Recording
 
@@ -235,8 +235,8 @@ camera / phone webcam / stream
 
 Owned by:
 
-- [live_vpr/capture.py](../live_vpr/capture.py)
-- `build_live_map(...)` in [live_vpr_test.py](../live_vpr_test.py)
+- [live_vpr/capture.py](../../live_vpr/capture.py)
+- `build_live_map(...)` in [live_vpr_test.py](../../live_vpr_test.py)
 
 Important behavior:
 
@@ -264,7 +264,7 @@ This is useful when you want to compare:
 
 ## 6. Online Phase In Detail
 
-The online flow is driven by `run_online(...)` in [live_vpr_test.py](../live_vpr_test.py).
+The online flow is driven by `run_online(...)` in [live_vpr_test.py](../../live_vpr_test.py).
 
 The key runtime steps are:
 
@@ -327,55 +327,55 @@ This is especially useful for:
 
 Edit:
 
-- [live_vpr/extractors.py](../live_vpr/extractors.py)
-- the corresponding file in [feature_extraction/](../feature_extraction)
+- [live_vpr/extractors.py](../../live_vpr/extractors.py)
+- the corresponding file in [feature_extraction/](../../feature_extraction)
 
 ### Change map metadata or map format
 
 Edit:
 
-- [live_vpr/database.py](../live_vpr/database.py)
+- [live_vpr/database.py](../../live_vpr/database.py)
 
 ### Change traversal recording behavior
 
 Edit:
 
-- [live_vpr/capture.py](../live_vpr/capture.py)
+- [live_vpr/capture.py](../../live_vpr/capture.py)
 
 ### Change localization logic
 
 Edit:
 
-- [live_vpr/online.py](../live_vpr/online.py)
+- [live_vpr/online.py](../../live_vpr/online.py)
 
 ### Change overlays or saved inference images
 
 Edit:
 
-- [live_vpr/ui.py](../live_vpr/ui.py)
+- [live_vpr/ui.py](../../live_vpr/ui.py)
 
 ### Change camera/stream handling
 
 Edit:
 
-- [live_vpr/sources.py](../live_vpr/sources.py)
+- [live_vpr/sources.py](../../live_vpr/sources.py)
 
 ### Change CLI flags or add a new mode
 
 Edit:
 
-- [live_vpr_test.py](../live_vpr_test.py)
+- [live_vpr_test.py](../../live_vpr_test.py)
 
 ## 10. Recommended Reading Order
 
 For a new developer working on the live system, read in this order:
 
-1. [live_vpr_test.py](../live_vpr_test.py)
-2. [live_vpr/offline.py](../live_vpr/offline.py)
-3. [live_vpr/capture.py](../live_vpr/capture.py)
-4. [live_vpr/database.py](../live_vpr/database.py)
-5. [live_vpr/online.py](../live_vpr/online.py)
-6. [live_vpr/ui.py](../live_vpr/ui.py)
-7. [live_vpr/sources.py](../live_vpr/sources.py)
+1. [live_vpr_test.py](../../live_vpr_test.py)
+2. [live_vpr/offline.py](../../live_vpr/offline.py)
+3. [live_vpr/capture.py](../../live_vpr/capture.py)
+4. [live_vpr/database.py](../../live_vpr/database.py)
+5. [live_vpr/online.py](../../live_vpr/online.py)
+6. [live_vpr/ui.py](../../live_vpr/ui.py)
+7. [live_vpr/sources.py](../../live_vpr/sources.py)
 
 That path mirrors how the system actually operates.

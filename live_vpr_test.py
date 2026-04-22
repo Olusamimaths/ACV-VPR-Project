@@ -26,12 +26,16 @@ from live_vpr import (
     MapBuilder,
     OpenCVFrameSource,
     SUPPORTED_DESCRIPTORS,
+    SUPPORTED_SEARCH_BACKENDS,
+    SUPPORTED_SEARCH_METRICS,
+    SearchConfig,
     VideoRecordingConfig,
     delete_source_alias,
     get_source_aliases_path,
     list_available_capture_sources,
     load_source_aliases,
     load_reference_map,
+    parse_args_with_config,
     probe_capture_source,
     resolve_capture_source,
     sample_video_to_frames,
@@ -82,6 +86,24 @@ def print_reference_map_summary(reference_map) -> None:
     print(f"Descriptor dim: {reference_map.descriptor_dim}")
     print(f"Target size: {tuple(reference_map.metadata.get('target_size', [640, 480]))}")
     print(f"Created: {reference_map.metadata.get('created_utc', 'unknown')}")
+
+
+def print_search_configuration(search_config: SearchConfig) -> None:
+    print(f"Search backend: {search_config.backend}")
+    print(f"Search metric: {search_config.metric}")
+    print(f"Search rerank: {search_config.rerank}")
+    if search_config.backend == "exact":
+        return
+    print(f"Search candidate_k: {search_config.candidate_k}")
+    if search_config.backend == "hnsw":
+        print(
+            "HNSW M / ef_construction / ef_search: "
+            f"{search_config.hnsw_m} / {search_config.hnsw_ef_construction} / {search_config.hnsw_ef_search}"
+        )
+    if search_config.backend in {"faiss_ivf_flat", "faiss_ivf_pq"}:
+        print(f"FAISS IVF nlist / nprobe: {search_config.ivf_nlist} / {search_config.ivf_nprobe}")
+    if search_config.backend == "faiss_ivf_pq":
+        print(f"FAISS PQ m / bits: {search_config.pq_m} / {search_config.pq_bits}")
 
 
 def print_source_resolution(source: str | int) -> None:
@@ -142,6 +164,7 @@ def build_live_map(args: argparse.Namespace, use_video: bool = False) -> None:
     print(f"Recording path: {args.recording_path}")
     print(f"Sampled frame directory: {args.capture_dir}")
     print(f"Sampling rate: {args.sample_fps:.2f} fps")
+    print(f"Saved reference frame scale: {args.capture_save_scale:.2f}x")
     print(f"Target size: {(args.resize_width, args.resize_height)}")
 
     if use_video:
@@ -171,6 +194,7 @@ def build_live_map(args: argparse.Namespace, use_video: bool = False) -> None:
             sample_fps=args.sample_fps,
             frame_prefix=args.capture_prefix,
             max_frames=args.max_captures,
+            save_scale=args.capture_save_scale,
         )
     )
 
@@ -194,6 +218,7 @@ def build_live_map(args: argparse.Namespace, use_video: bool = False) -> None:
                 "live_build_sample_fps": sampling_result.sample_fps,
                 "live_build_source_fps": sampling_result.source_fps,
                 "live_build_video_duration_s": sampling_result.video_duration_s,
+                "live_build_saved_frame_scale": args.capture_save_scale,
             },
         )
     except ModuleNotFoundError as exc:
@@ -313,10 +338,12 @@ def run_online(args: argparse.Namespace, use_video: bool = False) -> None:
     reference_map = load_reference_map(args.map_path)
     reference_map.metadata["map_path"] = str(Path(args.map_path).expanduser().resolve())
     descriptor = resolve_runtime_descriptor(reference_map, args.descriptor)
+    search_config = SearchConfig.from_namespace(args)
     print(f"\n{'=' * 68}")
     print("ONLINE PHASE: LIVE LOCALIZATION")
     print(f"{'=' * 68}")
     print_reference_map_summary(reference_map)
+    print_search_configuration(search_config)
 
     target_size = tuple(reference_map.metadata.get("target_size", [640, 480]))
     try:
@@ -325,6 +352,7 @@ def run_online(args: argparse.Namespace, use_video: bool = False) -> None:
             descriptor_name=descriptor,
             threshold=args.threshold,
             top_k=args.top_k,
+            search_config=search_config,
         )
     except ModuleNotFoundError as exc:
         raise RuntimeError(
@@ -333,6 +361,7 @@ def run_online(args: argparse.Namespace, use_video: bool = False) -> None:
         ) from exc
     display = LiveDisplay(reference_map=reference_map, show_top_k=not args.hide_top_k)
     print(f"Runtime backend: {describe_extractor_runtime(localizer.extractor)}")
+    print(f"Search runtime: {localizer.search_backend.describe()}")
 
     source = args.video if use_video else args.source
     if source is None:
@@ -545,8 +574,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--config",
+        type=str,
+        help="YAML configuration file to load before applying CLI overrides",
+    )
+    parser.add_argument(
         "--mode",
-        required=True,
+        default=None,
         choices=[
             "build_map",
             "build_db",
@@ -683,6 +717,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="How densely to sample frames from the recorded traversal video when building a live map",
     )
     parser.add_argument(
+        "--capture_save_scale",
+        type=float,
+        default=0.5,
+        help=(
+            "Scale factor applied when saving sampled reference frames during live map building. "
+            "Use 0.5 to halve width and height, or 1.0 to keep original size"
+        ),
+    )
+    parser.add_argument(
         "--start_recording",
         action="store_true",
         help="Start the traversal recorder immediately instead of opening in paused mode",
@@ -754,12 +797,95 @@ def build_parser() -> argparse.ArgumentParser:
         default="Live VPR",
         help="OpenCV window title",
     )
+    parser.add_argument(
+        "--search_backend",
+        type=str,
+        default="exact",
+        choices=SUPPORTED_SEARCH_BACKENDS,
+        help="Search backend used for reference-map lookup",
+    )
+    parser.add_argument(
+        "--search_metric",
+        type=str,
+        default="cosine",
+        choices=SUPPORTED_SEARCH_METRICS,
+        help="Similarity metric used by the selected search backend",
+    )
+    parser.add_argument(
+        "--search_candidate_k",
+        type=int,
+        default=50,
+        help="Number of ANN candidates to retrieve before optional exact reranking",
+    )
+    parser.add_argument(
+        "--search_rerank",
+        dest="search_rerank",
+        action="store_true",
+        help="Enable exact reranking of ANN candidates using the full descriptor matrix",
+    )
+    parser.add_argument(
+        "--no_search_rerank",
+        dest="search_rerank",
+        action="store_false",
+        help="Disable exact reranking for ANN search backends",
+    )
+    parser.add_argument(
+        "--search_hnsw_m",
+        type=int,
+        default=16,
+        help="HNSW graph connectivity parameter M",
+    )
+    parser.add_argument(
+        "--search_hnsw_ef_construction",
+        type=int,
+        default=200,
+        help="HNSW build-time ef parameter",
+    )
+    parser.add_argument(
+        "--search_hnsw_ef_search",
+        type=int,
+        default=64,
+        help="HNSW query-time ef parameter",
+    )
+    parser.add_argument(
+        "--search_ivf_nlist",
+        type=int,
+        default=100,
+        help="Number of FAISS IVF coarse clusters",
+    )
+    parser.add_argument(
+        "--search_ivf_nprobe",
+        type=int,
+        default=10,
+        help="Number of FAISS IVF clusters to probe during search",
+    )
+    parser.add_argument(
+        "--search_pq_m",
+        type=int,
+        default=16,
+        help="Number of product-quantization sub-vectors for FAISS IVFPQ",
+    )
+    parser.add_argument(
+        "--search_pq_bits",
+        type=int,
+        default=8,
+        help="Bits per codebook entry for FAISS IVFPQ",
+    )
+    parser.add_argument(
+        "--search_train_limit",
+        type=int,
+        default=10000,
+        help="Maximum number of descriptors used to train FAISS IVF indexes. Use <=0 to train on all descriptors",
+    )
+    parser.set_defaults(search_rerank=True)
     return parser
 
 
 def main() -> None:
     parser = build_parser()
-    args = parser.parse_args()
+    args = parse_args_with_config(parser)
+    if not args.mode:
+        raise ValueError("--mode is required unless it is provided by the YAML config file")
     args.mode = normalize_mode(args.mode)
 
     if args.mode == "build_map":

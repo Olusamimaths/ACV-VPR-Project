@@ -12,7 +12,7 @@ with open(os.path.join(here, 'README.md'), encoding='utf-8') as f:
 install_require_list = [
     'numpy', 'matplotlib', 'Pillow', 'scipy',
     'scikit-image', 'tensorflow', 'tensorflow_hub',
-    'torch', 'torchvision', 'tqdm']
+    'torch', 'torchvision', 'tqdm', 'PyYAML']
 
 # workaround as opencv-python does not show up in "pip list" within a conda environment
 # we do not care as conda recipe has py-opencv requirement anyhow
@@ -49,6 +49,11 @@ setup(name='vpr_tutorial',
       ],
       python_requires='>=3.8',
       install_requires=install_require_list,
+      extras_require={
+          'search-hnsw': ['hnswlib'],
+          'search-faiss': ['faiss-cpu'],
+          'search-all': ['hnswlib', 'faiss-cpu'],
+      },
       packages=find_packages(),
       keywords=[
           'python', 'place recognition', 'image retrieval', 'computer vision', 'robotics'

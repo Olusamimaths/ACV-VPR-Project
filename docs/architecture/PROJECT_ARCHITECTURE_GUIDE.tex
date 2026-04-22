@@ -14,8 +14,9 @@
 \usepackage{listings}
 \usepackage{graphicx}
 \usepackage{float}
-\usepackage{tikz}
-\usetikzlibrary{arrows.meta,positioning,fit,shapes.geometric}
+\usepackage{smartdiagram}
+\usesmartdiagramlibrary{additions}
+\usetikzlibrary{arrows.meta}
 
 \hypersetup{
   colorlinks=true,
@@ -44,6 +45,21 @@
 
 \newcommand{\file}[1]{\texttt{#1}}
 \newcommand{\step}[1]{\textbf{#1}}
+\newcommand{\diagramstyle}{
+  \smartdiagramset{
+    font=\small,
+    module minimum width=2.7cm,
+    module minimum height=1.0cm,
+    text width=2.5cm,
+    back arrow disabled=true,
+    circular distance=2.4cm,
+    arrow line width=1pt,
+    additions={
+      additional item border color=black!15,
+      additional item shadow=false,
+    }
+  }
+}
 
 \title{\textbf{VPR Tutorial Architecture Guide}\\[4pt]
 A Practical Codebase Walkthrough for New Developers}
@@ -73,33 +89,19 @@ The repository now has two production-relevant paths that share the same VPR ide
   \item \step{Live path:} build a reusable reference map, then localize camera frames or video frames against that map in real time.
 \end{itemize}
 
+\diagramstyle
 \begin{figure}[H]
 \centering
-\resizebox{0.98\textwidth}{!}{%
-\begin{tikzpicture}[
-  node distance=8mm and 8mm,
-  box/.style={draw, rounded corners, align=center, minimum width=36mm, minimum height=11mm, fill=boxgray},
-  arrow/.style={-{Latex[length=2.5mm]}, thick}
-]
-\node[box, fill=boxblue] (datasets) {Dataset loaders\\\file{datasets/load\_dataset.py}};
-\node[box, fill=boxgreen, right=of datasets] (features) {Descriptor extraction\\\file{feature\_extraction/}};
-\node[box, fill=boxorange, right=of features] (matching) {Matching + metrics\\\file{matching/}, \file{evaluation/}};
-
-\node[box, fill=boxblue, below=14mm of datasets] (capture) {Capture / sources\\\file{live\_vpr/sources.py}};
-\node[box, fill=boxgreen, right=of capture] (mapbuild) {Map building + storage\\\file{live\_vpr/offline.py}, \file{live\_vpr/database.py}};
-\node[box, fill=boxorange, right=of mapbuild] (online) {Online localization + UI\\\file{live\_vpr/online.py}, \file{live\_vpr/ui.py}};
-
-\draw[arrow] (datasets) -- node[above, font=\small] {benchmark path} (features);
-\draw[arrow] (features) -- (matching);
-
-\draw[arrow] (capture) -- node[above, font=\small] {live path} (mapbuild);
-\draw[arrow] (mapbuild) -- (online);
-
-\node[draw, rounded corners, fit=(datasets) (features) (matching), inner sep=5pt, label=above:{\textbf{Benchmark evaluation pipeline}}] {};
-\node[draw, rounded corners, fit=(capture) (mapbuild) (online), inner sep=5pt, label=below:{\textbf{Live deployment pipeline}}] {};
-\end{tikzpicture}
+\smartdiagramset{uniform color list=boxgray for 6 items}
+\smartdiagram[flow diagram]{
+Benchmark entrypoints,
+Dataset loaders,
+Descriptor extraction,
+Live pipeline modules,
+Config + search layer,
+UI + evaluation outputs
 }
-\caption{Repository overview: two main paths share descriptor extraction ideas, but only the benchmark path computes evaluation metrics during runtime.}
+\caption{Repository overview: the benchmark and live paths share descriptor ideas, while the live path adds configuration, persisted maps, and pluggable search.}
 \end{figure}
 
 \section{Where To Start Reading}
@@ -120,115 +122,70 @@ This order is useful because it teaches the simple benchmark flow first and then
 \section{Architecture Diagrams}
 
 \subsection{Benchmark Flow}
+\diagramstyle
 \begin{figure}[H]
 \centering
-\resizebox{0.98\textwidth}{!}{%
-\begin{tikzpicture}[
-  node distance=8mm and 8mm,
-  box/.style={draw, rounded corners, align=center, minimum width=28mm, minimum height=10mm, fill=boxblue},
-  arrow/.style={-{Latex[length=2.5mm]}, thick}
-]
-\node[box] (entry) {\file{demo.py}\\or \file{test\_campus\_dataset.py}};
-\node[box, right=of entry] (dataset) {Load dataset\\images + GT matrices};
-\node[box, right=of dataset, fill=boxgreen] (desc) {Extract descriptors\\(global / patch)};
-\node[box, right=of desc] (sim) {Similarity matrix $S$\\cosine or local matcher};
-\node[box, right=of sim, fill=boxorange] (match) {Matching\\$M_1$, $M_2$};
-\node[box, below=of sim, minimum width=42mm, fill=boxgray] (eval) {PR curve, AUC, $R@100P$, $R@K$\\and TP/FP visualization};
-
-\draw[arrow] (entry) -- (dataset);
-\draw[arrow] (dataset) -- (desc);
-\draw[arrow] (desc) -- (sim);
-\draw[arrow] (sim) -- (match);
-\draw[arrow] (match) |- (eval);
-\draw[arrow] (sim) -- (eval);
-\end{tikzpicture}
+\smartdiagramset{uniform color list=boxblue for 6 items}
+\smartdiagram[flow diagram:horizontal]{
+Benchmark entrypoints,
+Dataset loader,
+Descriptor extraction,
+Similarity matrix $S$,
+Matching layer,
+Metrics + plots
 }
 \caption{The benchmark path computes a full similarity matrix and then evaluates it against ground truth.}
 \end{figure}
 
 \subsection{Live Flow}
+\diagramstyle
 \begin{figure}[H]
 \centering
-\resizebox{0.98\textwidth}{!}{%
-\begin{tikzpicture}[
-  node distance=8mm and 8mm,
-  box/.style={draw, rounded corners, align=center, minimum width=28mm, minimum height=10mm, fill=boxgreen},
-  io/.style={draw, rounded corners, align=center, minimum width=28mm, minimum height=10mm, fill=boxgray},
-  arrow/.style={-{Latex[length=2.5mm]}, thick}
-]
-\node[io] (source) {camera index / alias / URL / video};
-\node[box, right=of source] (record) {optional traversal recording\\\file{live\_vpr/capture.py}};
-\node[box, right=of record] (sample) {sample frames from video\\\file{sample\_video\_to\_frames}};
-\node[box, right=of sample] (map) {build \file{ReferenceMap} (.npz)\\\file{live\_vpr/offline.py}};
-\node[box, below=of map] (online) {localize each frame\\\file{live\_vpr/online.py}};
-\node[box, left=of online, minimum width=34mm, fill=boxorange] (ui) {overlay + report export\\\file{live\_vpr/ui.py}};
-
-\draw[arrow] (source) -- (record);
-\draw[arrow] (record) -- (sample);
-\draw[arrow] (sample) -- (map);
-\draw[arrow] (map) -- (online);
-\draw[arrow] (source) |- (online);
-\draw[arrow] (online) -- (ui);
-\end{tikzpicture}
+\smartdiagramset{uniform color list=boxgreen for 8 items}
+\smartdiagram[flow diagram]{
+YAML config + CLI,
+Source / traversal video,
+Sampled reference images,
+Descriptor extraction,
+ReferenceMap (.npz),
+Search backend,
+Optional exact rerank,
+Live overlay + reports
 }
 \caption{The live path builds a reusable map once and then performs repeated single-frame localization against it.}
 \end{figure}
 
 \subsection{Module-Level Ownership}
+\diagramstyle
 \begin{figure}[H]
 \centering
-\resizebox{0.98\textwidth}{!}{%
-\begin{tikzpicture}[
-  node distance=9mm and 9mm,
-  box/.style={draw, rounded corners, align=left, minimum width=45mm, minimum height=10mm, fill=white},
-  main/.style={draw, rounded corners, align=center, minimum width=45mm, minimum height=12mm, fill=boxblue},
-  arrow/.style={-{Latex[length=2.5mm]}, thick}
-]
-\node[main] (cli) {\file{live\_vpr\_test.py}\\CLI orchestration};
-\node[box, below left=of cli, fill=boxgreen] (offline) {\file{live\_vpr/offline.py}\\map build from folder or sampled video frames};
-\node[box, below=of cli, fill=boxgreen] (capture) {\file{live\_vpr/capture.py}\\record traversal + sample timestamps};
-\node[box, below right=of cli, fill=boxgreen] (online) {\file{live\_vpr/online.py}\\descriptor + similarity + threshold decision};
-\node[box, below=of capture, fill=boxorange] (db) {\file{live\_vpr/database.py}\\ReferenceMap schema and .npz serialization};
-\node[box, left=of db, fill=boxorange] (sources) {\file{live\_vpr/sources.py}\\source probing, aliases, and OpenCV wrappers};
-\node[box, right=of db, fill=boxorange] (ui) {\file{live\_vpr/ui.py}\\real-time HUD and saved inference report canvases};
-
-\draw[arrow] (cli) -- (offline);
-\draw[arrow] (cli) -- (capture);
-\draw[arrow] (cli) -- (online);
-\draw[arrow] (offline) -- (db);
-\draw[arrow] (capture) -- (db);
-\draw[arrow] (sources) -- (capture);
-\draw[arrow] (sources) |- (online);
-\draw[arrow] (db) -- (online);
-\draw[arrow] (online) -- (ui);
-\end{tikzpicture}
+\smartdiagramset{uniform color list=boxorange for 9 items}
+\smartdiagram[constellation diagram]{
+live\_vpr\_test.py,
+config.py,
+capture.py,
+offline.py,
+database.py,
+online.py,
+search.py,
+ui.py,
+sources.py
 }
 \caption{Module-level view of the live system. \file{live\_vpr\_test.py} coordinates the workflow; the logic lives in smaller modules.}
 \end{figure}
 
 \subsection{Artifacts and Persistence Flow}
+\diagramstyle
 \begin{figure}[H]
 \centering
-\resizebox{0.98\textwidth}{!}{%
-\begin{tikzpicture}[
-  node distance=8mm and 9mm,
-  box/.style={draw, rounded corners, align=center, minimum width=37mm, minimum height=10mm, fill=boxgray},
-  arrow/.style={-{Latex[length=2.5mm]}, thick}
-]
-\node[box, fill=boxblue] (day) {Reference images\\\file{custom\_dataset/day\_images}};
-\node[box, right=of day, fill=boxgreen] (mapnpz) {Saved map artifact\\\file{artifacts/live\_maps/*.npz}};
-\node[box, right=of mapnpz, fill=boxorange] (runtime) {Runtime localization\\\file{live\_vpr/online.py}};
-
-\node[box, below=of day] (video) {Traversal video\\\file{artifacts/reference\_videos/*.mp4}};
-\node[box, right=of video] (frames) {Sampled frames\\\file{artifacts/reference\_captures/*}};
-\node[box, right=of frames] (reports) {Inference outputs\\\file{artifacts/inference\_stats/*}\\\file{artifacts/live\_captures/*}};
-
-\draw[arrow] (day) -- (mapnpz);
-\draw[arrow] (mapnpz) -- (runtime);
-\draw[arrow] (video) -- (frames);
-\draw[arrow] (frames) |- (mapnpz);
-\draw[arrow] (runtime) -- (reports);
-\end{tikzpicture}
+\smartdiagramset{uniform color list=boxgray for 6 items}
+\smartdiagram[flow diagram:horizontal]{
+configs/live\_vpr.yaml,
+reference images or traversal video,
+sampled reference frames,
+saved maps in artifacts/live\_maps,
+runtime localization,
+saved reports + captures
 }
 \caption{Important filesystem artifacts. The live system relies on persisted map files rather than repeatedly scanning raw folders during runtime.}
 \end{figure}
@@ -380,7 +337,9 @@ from live_vpr import (
     MapBuildConfig,
     MapBuilder,
     OpenCVFrameSource,
+    SearchConfig,
     load_reference_map,
+    parse_args_with_config,
 )
 \end{lstlisting}
 
@@ -389,10 +348,21 @@ from live_vpr import (
 \textbf{Current branch detail.} It now also includes:
 \begin{itemize}[leftmargin=*]
   \item mode aliases for backward compatibility (for example, \texttt{build\_db} $\rightarrow$ \texttt{build\_map}),
+  \item YAML configuration loading before CLI overrides,
   \item source alias persistence commands,
   \item optional per-inference report image export,
-  \item configurable inference cadence via \texttt{--process\_fps}.
+  \item configurable inference cadence via \texttt{--process\_fps},
+  \item pluggable search backends for runtime map lookup.
 \end{itemize}
+
+\subsection{\file{live\_vpr/config.py} and \file{configs/live\_vpr.yaml}}
+\textbf{What they do.} These files define how the live pipeline loads defaults from YAML and then lets CLI flags override those defaults.
+
+\begin{lstlisting}[style=repo, language=Python, caption={Config-first argument parsing}]
+args = parse_args_with_config(parser)
+\end{lstlisting}
+
+\textbf{How it works.} The config loader flattens the YAML tree, validates that every key corresponds to a real parser destination, applies those values as parser defaults, and then parses the final command line. This keeps runtime tuning modular instead of scattering hardcoded constants across the CLI.
 
 \subsection{\file{live\_vpr/offline.py}}
 \textbf{What it does.} This file owns reference-map creation from images.
@@ -437,12 +407,14 @@ status_frame = self._render_overlay(frame, recording, frame_count)
 \begin{lstlisting}[style=repo, language=Python, caption={Sampling a traversal video into reference frames}]
 should_sample = current_time_s + (0.5 / source_fps) >= next_sample_time_s
 if should_sample:
-    cv2.imwrite(str(output_path), frame)
+    if config.save_scale < 1.0:
+        frame_to_save = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
+    cv2.imwrite(str(output_path), frame_to_save)
     saved_paths.append(str(output_path))
     next_sample_time_s += sample_interval_s
 \end{lstlisting}
 
-\textbf{How it works.} Recording and sampling are intentionally separate. That makes it easy to rebuild a map later with a different sampling rate.
+\textbf{How it works.} Recording and sampling are intentionally separate. That makes it easy to rebuild a map later with a different sampling rate, and the saved-frame downsampling option now lets the project keep the sampled reference set smaller on disk.
 
 \subsection{\file{live\_vpr/online.py}}
 \textbf{What it does.} This file owns the runtime localization step.
@@ -450,11 +422,51 @@ if should_sample:
 \begin{lstlisting}[style=repo, language=Python, caption={The live localization core}]
 descriptor = compute_global_descriptors(self.extractor, [rgb_image])
 descriptor = descriptor / (np.linalg.norm(descriptor, axis=1, keepdims=True) + 1e-8)
-similarities = (self.reference_map.descriptors @ descriptor.T).reshape(-1)
-top_indices = np.argsort(similarities)[-top_k:][::-1]
+search_result = self.search_backend.search(descriptor[0], top_k=self.top_k)
 \end{lstlisting}
 
-\textbf{How it works.} The live phase still performs VPR in the same conceptual way as the benchmark path. The difference is that it localizes one frame at a time instead of evaluating an entire query set.
+\textbf{How it works.} The live phase still performs VPR in the same conceptual way as the benchmark path, but the lookup is no longer hardcoded to a full linear scan. \file{live\_vpr/online.py} now delegates retrieval to a search backend and only concerns itself with frame encoding, thresholding, and packaging the result.
+
+\subsection{\file{live\_vpr/search.py}}
+\textbf{What it does.} This file owns scalable reference-map lookup.
+
+\begin{lstlisting}[style=repo, language=Python, caption={Search backends are created from one configuration object}]
+search_config = SearchConfig.from_namespace(args)
+self.search_backend = create_search_backend(reference_map.descriptors, self.search_config)
+\end{lstlisting}
+
+\textbf{Current supported backends.}
+\begin{itemize}[leftmargin=*]
+  \item \texttt{exact}: full scan over the descriptor matrix with partial top-k selection,
+  \item \texttt{hnsw}: approximate nearest-neighbor retrieval using HNSW,
+  \item \texttt{faiss\_ivf\_flat}: FAISS IVF search with flat residual storage,
+  \item \texttt{faiss\_ivf\_pq}: FAISS IVF search with product quantization for larger maps.
+\end{itemize}
+
+\textbf{How they are currently implemented.}
+\begin{itemize}[leftmargin=*]
+  \item \texttt{exact} uses the descriptor matrix directly and applies a partial top-k selection instead of fully sorting every score.
+  \item \texttt{hnsw} builds an HNSW index once, then queries that graph for a shortlist of likely candidates.
+  \item \texttt{faiss\_ivf\_flat} trains a FAISS coarse quantizer, probes only the most relevant clusters, and keeps exact vectors inside them.
+  \item \texttt{faiss\_ivf\_pq} uses the same FAISS cluster idea but stores vectors in compressed PQ form to save memory.
+\end{itemize}
+
+\begin{lstlisting}[style=repo, language=Python, caption={Approximate search can still be followed by exact reranking}]
+if self.config.rerank:
+    indices, scores = _rerank_exact(self.descriptors, query, candidate_indices, top_k)
+\end{lstlisting}
+
+\textbf{Why reranking exists.} ANN methods are fast because they avoid scoring every map descriptor, but their returned order is only approximate. Reranking recomputes the exact scores on the candidate shortlist so the final top-k order and thresholding score are closer to the true cosine result.
+
+\textbf{A tiny intuition example.}
+\begin{itemize}[leftmargin=*]
+  \item If the map has only a few hundred references, \texttt{exact} is often simplest and perfectly fine.
+  \item If the map grows to tens of thousands of references, \texttt{hnsw} can quickly return a shortlist like \(\{E,F,D\}\) instead of scanning the whole map.
+  \item \texttt{faiss\_ivf\_flat} is strong when the map is large and static because it searches a few relevant clusters rather than the full matrix.
+  \item \texttt{faiss\_ivf\_pq} helps when memory becomes part of the problem, not just query latency.
+\end{itemize}
+
+\textbf{How it works.} This layer is what lets the repo move from small-map exact matching to larger-map ANN search without changing the rest of the live localization flow. The localizer still only asks for ``top-k matches''; the search layer decides how to retrieve them.
 
 \subsection{\file{live\_vpr/sources.py}}
 \textbf{What it does.} This file abstracts webcams, stream URLs, and source aliases.
@@ -744,7 +756,7 @@ So the live score is a \emph{runtime confidence signal}, not a full offline metr
 \subsection{Step 3: Where database flow and UI flow meet}
 \begin{itemize}[leftmargin=*]
   \item \textbf{Database flow}: persisted map file provides descriptors + metadata + image paths.
-  \item \textbf{Live flow}: each frame gets one descriptor, then one vector-matrix multiply against stored descriptors.
+  \item \textbf{Live flow}: each frame gets one descriptor, then a search backend retrieves the strongest candidates from stored descriptors.
   \item \textbf{UI flow}: renders decision state (MATCH/UNKNOWN), best match thumbnail, and top-$k$ panel from stored \texttt{image\_paths}.
 \end{itemize}
 
@@ -752,7 +764,7 @@ So the runtime loop is:
 \begin{center}
 \fbox{\parbox{0.86\linewidth}{
 \centering
-load map once $\rightarrow$ process frame $\rightarrow$ compute similarities $\rightarrow$ threshold decision $\rightarrow$ visualize/export
+load map once $\rightarrow$ process frame $\rightarrow$ retrieve candidates $\rightarrow$ threshold decision $\rightarrow$ visualize/export
 }}
 \end{center}
 
@@ -778,6 +790,8 @@ Change match selection & \file{matching/matching.py} \\
 Change live map format & \file{live\_vpr/database.py} \\
 Change traversal recording & \file{live\_vpr/capture.py} \\
 Change live localization logic & \file{live\_vpr/online.py} \\
+Change search backend or ANN parameters & \file{live\_vpr/search.py} and \file{configs/live\_vpr.yaml} \\
+Change YAML config defaults & \file{live\_vpr/config.py} and \file{configs/live\_vpr.yaml} \\
 Change overlays / saved report images & \file{live\_vpr/ui.py} \\
 Change camera or stream handling & \file{live\_vpr/sources.py} \\
 Add a new live mode or CLI flag & \file{live\_vpr\_test.py} \\
@@ -790,7 +804,7 @@ Almost everything in the repo reduces to the same conceptual loop:
 \begin{center}
 \fbox{\parbox{0.82\linewidth}{
 \centering
-image $\rightarrow$ descriptor $\rightarrow$ similarity $\rightarrow$ decision
+image $\rightarrow$ descriptor $\rightarrow$ search $\rightarrow$ decision
 }}
 \end{center}
 
@@ -801,10 +815,10 @@ This guide uses three safeguards so the diagrams render predictably across edito
 
 \begin{itemize}[leftmargin=*]
   \item figures are pinned with \texttt{[H]} to avoid aggressive float reordering,
-  \item each TikZ figure is wrapped in \texttt{\textbackslash resizebox\{0.98\textbackslash textwidth\}\{!\}\{...\}} to prevent clipping,
-  \item node widths and spacing are bounded so no text spills outside the page box.
+  \item architecture figures now use the higher-level \texttt{smartdiagram} package instead of hand-positioned TikZ nodes,
+  \item diagram text widths are bounded so long file names do not spill outside the page box.
 \end{itemize}
 
-If a renderer still hides TikZ graphics, compile with \texttt{pdflatex} or \texttt{xelatex} directly and ensure TikZ is enabled in the LaTeX distribution.
+If a renderer still hides diagram graphics, compile with \texttt{pdflatex} or \texttt{xelatex} directly and ensure the standard diagram packages from TeX Live are available.
 
 \end{document}

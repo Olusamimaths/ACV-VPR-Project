@@ -34,6 +34,7 @@ class FrameSamplingConfig:
     sample_fps: float = 1.0
     frame_prefix: str = "ref"
     max_frames: int | None = None
+    save_scale: float = 0.5
 
 
 @dataclass
@@ -158,6 +159,8 @@ def sample_video_to_frames(config: FrameSamplingConfig) -> FrameSamplingResult:
 
     if config.sample_fps <= 0:
         raise ValueError("sample_fps must be > 0")
+    if config.save_scale <= 0:
+        raise ValueError("save_scale must be > 0")
 
     output_dir = Path(config.output_dir).expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -189,7 +192,13 @@ def sample_video_to_frames(config: FrameSamplingConfig) -> FrameSamplingResult:
                 timestamp_ms = int(round(current_time_s * 1000.0))
                 filename = f"{config.frame_prefix}_{len(saved_paths):04d}_{timestamp_ms:08d}ms.jpg"
                 output_path = output_dir / filename
-                cv2.imwrite(str(output_path), frame)
+                frame_to_save = frame
+                if config.save_scale < 1.0:
+                    new_width = max(1, int(round(frame.shape[1] * config.save_scale)))
+                    new_height = max(1, int(round(frame.shape[0] * config.save_scale)))
+                    if new_width != frame.shape[1] or new_height != frame.shape[0]:
+                        frame_to_save = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
+                cv2.imwrite(str(output_path), frame_to_save)
                 saved_paths.append(str(output_path))
                 next_sample_time_s += sample_interval_s
 
