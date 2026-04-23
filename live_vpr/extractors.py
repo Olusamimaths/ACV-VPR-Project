@@ -15,6 +15,8 @@ SUPPORTED_DESCRIPTORS = [
     "CosPlace",
     "EigenPlaces",
     "SAD",
+    "VPRTempo",
+    "VPRTempoQuant",
 ]
 
 
@@ -62,6 +64,14 @@ def create_feature_extractor(descriptor_name: str) -> Any:
         from feature_extraction.feature_extractor_eigenplaces import EigenPlacesFeatureExtractor
 
         return EigenPlacesFeatureExtractor()
+    if descriptor_name == "VPRTempo":
+        from feature_extraction.feature_extractor_vprtempo import VPRTempoFeatureExtractor
+
+        return VPRTempoFeatureExtractor(quantized=False)
+    if descriptor_name == "VPRTempoQuant":
+        from feature_extraction.feature_extractor_vprtempo import VPRTempoFeatureExtractor
+
+        return VPRTempoFeatureExtractor(quantized=True)
 
     raise ValueError(f"Unsupported descriptor: {descriptor_name}")
 
