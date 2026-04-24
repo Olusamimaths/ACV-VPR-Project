@@ -12,9 +12,9 @@
 \usepackage{booktabs}
 \usepackage{array}
 \usepackage{tikz}
-\usetikzlibrary{arrows.meta,positioning,shapes.geometric}
+\usetikzlibrary{arrows.meta,positioning}
 \usepackage{xcolor}
-\usepackage{multicol}
+\usepackage{ragged2e}
 
 \definecolor{accent}{RGB}{15,76,129}
 \definecolor{softblue}{RGB}{227,239,250}
@@ -35,7 +35,7 @@
 }
 
 \title{Nocturnal Visual Place Recognition}
-\subtitle{From Benchmark Evaluation to Live Robot-Facing Localization}
+\subtitle{Descriptor Exploration, Campus Transfer, and Live Localization}
 \author{Rhoda Ojetola \and Peter Adeyemo \and Samuel Olusola}
 \institute{CMU-Africa}
 \date{April 26, 2026}
@@ -46,405 +46,286 @@
   \titlepage
 \end{frame}
 
-\begin{frame}{Problem}
+\begin{frame}{1. Introduction}
   \begin{columns}[T,totalwidth=\textwidth]
-    \column{0.52\textwidth}
-      \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{../../custom_dataset/day_images/image010.jpg}
+    \column{0.48\textwidth}
+      \includegraphics[width=\linewidth,height=0.56\textheight,keepaspectratio]{../../custom_dataset/day_images/image010.jpg}
 
-    \column{0.46\textwidth}
-      \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{../../custom_dataset/night_images/image010.jpg}
+      \vspace{0.4em}
+      \centering \pill{softblue}{Day reference}
+
+    \column{0.48\textwidth}
+      \includegraphics[width=\linewidth,height=0.56\textheight,keepaspectratio]{../../custom_dataset/night_images/image010.jpg}
+
+      \vspace{0.4em}
+      \centering \pill{softorange}{Night query}
   \end{columns}
 
   \vspace{0.5em}
-  \centering
-  \pill{softblue}{Day map} \hspace{1em}
-  \pill{softorange}{Night query} \hspace{1em}
-  \pill{softgreen}{Goal: localize reliably}
+  \begin{block}{Problem}
+    \small
+    We want a robot to recognize its location at night using a daytime map. This is hard because large illumination changes make many daytime-trained descriptors unstable at night.
+  \end{block}
 \end{frame}
 
-\begin{frame}{Why This Is Hard}
+\begin{frame}{2. Gap and Hypothesis}
+  \begin{block}{Gap in existing work}
+    \small
+    Many VPR papers report strong benchmark performance, but it is still unclear which descriptors \textbf{transfer best to our specific setting}: day-to-night localization, training-free evaluation, and a small campus deployment scenario.
+  \end{block}
+
+  \vspace{0.5em}
+  \begin{block}{Research question}
+    \small
+    If we keep the pipeline simple and avoid retraining, which descriptor gives the most reliable nocturnal place recognition on both a controlled benchmark and our own campus dataset?
+  \end{block}
+
+  \vspace{0.5em}
+  \begin{block}{Hypothesis}
+    \small
+    \textbf{Descriptor choice is the dominant factor} in our current nocturnal VPR setup. We expect modern VPR descriptors to outperform older or more generic baselines on both GardensPoint and the strict campus dataset.
+  \end{block}
+\end{frame}
+
+\begin{frame}{3. Related Work and What We Tried}
   \begin{columns}[T,totalwidth=\textwidth]
-    \column{0.30\textwidth}
-      \begin{block}{Illumination}
-        \centering
-        \Large Day $\rightarrow$ night
-
-        \vspace{0.5em}
-        \large strong appearance shift
+    \column{0.48\textwidth}
+      \begin{block}{Descriptors evaluated}
+        \small
+        \begin{itemize}
+          \item \textbf{Older / generic}: SAD, AlexNet, NetVLAD
+          \item \textbf{Local + global}: PatchNetVLAD
+          \item \textbf{Modern VPR descriptors}: CosPlace, EigenPlaces, SALAD, SelaVPR++
+          \item \textbf{Specialized spiking model}: VPRTempo
+        \end{itemize}
       \end{block}
 
-    \column{0.30\textwidth}
-      \begin{block}{Viewpoint}
-        \centering
-        \Large Small pose changes
-
-        \vspace{0.5em}
-        \large can distort ranking
+      \begin{block}{What these are}
+        \small
+        CosPlace / EigenPlaces learn strong global place descriptors. SALAD improves descriptor aggregation with DINOv2 features. SelaVPR++ adapts foundation models for efficient place recognition. VPRTempo is a fast temporally encoded spiking network rather than a universal drop-in descriptor.
       \end{block}
 
-    \column{0.30\textwidth}
-      \begin{block}{Deployment}
-        \centering
-        \Large Live inference
+    \column{0.48\textwidth}
+      \begin{block}{Why this comparison matters}
+        \small
+        Our current phase focuses on \textbf{descriptor exploration first}: before adding CLAHE, sequence matching, or temporal filtering, we want to know which representation is strongest in our actual setting.
+      \end{block}
 
-        \vspace{0.5em}
-        \large must stay responsive
+      \begin{block}{Methods still planned}
+        \small
+        CLAHE preprocessing, sequence matching, and temporal prediction remain future or next-phase improvements once the descriptor baseline is settled.
       \end{block}
   \end{columns}
-
-  \vspace{1em}
-  \begin{center}
-    \includegraphics[width=0.35\linewidth,height=0.38\textheight,keepaspectratio]{../../custom_dataset/day_images/image001.jpg}
-    \hspace{0.03\linewidth}
-    \includegraphics[width=0.35\linewidth,height=0.38\textheight,keepaspectratio]{../../custom_dataset/night_images/image001.jpg}
-  \end{center}
 \end{frame}
 
-\begin{frame}{Related Work}
-  \vspace{0.4em}
+\begin{frame}{4. Methodology and Datasets}
   \begin{center}
   \begin{tikzpicture}[
-    node distance=14mm and 12mm,
-    box/.style={draw, rounded corners, minimum width=27mm, minimum height=11mm, align=center, fill=softgray},
+    node distance=9mm and 7mm,
+    box/.style={draw, rounded corners, minimum width=25mm, minimum height=10mm, align=center, fill=softgray},
     arrow/.style={-{Latex[length=2.2mm]}, thick, accent}
   ]
-    \node[box, fill=softblue] (global) {\textbf{Global VPR}\\NetVLAD\\CosPlace\\EigenPlaces};
-    \node[box, right=of global, fill=softgreen] (night) {\textbf{Night VPR}\\NocPlace\\illumination robustness};
-    \node[box, right=of night, fill=softorange] (sequence) {\textbf{Sequential VPR}\\SeqSLAM\\VPRTempo};
-    \node[box, below=18mm of night, minimum width=42mm, fill=accent!12] (ours) {\textbf{Our direction}\\strong pretrained descriptors\\+ lightweight temporal cues};
-    \draw[arrow] (global) -- (ours);
-    \draw[arrow] (night) -- (ours);
-    \draw[arrow] (sequence) -- (ours);
+    \node[box, fill=softblue] (dataset) {Dataset};
+    \node[box, right=of dataset, fill=softgreen] (descriptor) {Descriptor\\extraction};
+    \node[box, right=of descriptor, fill=softorange] (similarity) {Cosine\\similarity};
+    \node[box, right=of similarity, fill=softblue] (matching) {Matching\\+ thresholding};
+    \node[box, right=of matching, fill=softgreen] (metrics) {AUC, R@100P,\\R@1/R@5/R@10};
+    \draw[arrow] (dataset) -- (descriptor);
+    \draw[arrow] (descriptor) -- (similarity);
+    \draw[arrow] (similarity) -- (matching);
+    \draw[arrow] (matching) -- (metrics);
   \end{tikzpicture}
   \end{center}
 
   \vspace{0.8em}
-  \centering
-  \pill{softblue}{Training-free bias} \hspace{1em}
-  \pill{softgreen}{Benchmark + campus transfer} \hspace{1em}
-  \pill{softorange}{Live demo focus}
+  \begin{columns}[T,totalwidth=\textwidth]
+    \column{0.48\textwidth}
+      \begin{block}{GardensPoint}
+        \small
+        200 day-right reference images and 200 night-right queries. This remains our main benchmark because it directly matches the \textbf{day-to-night} problem.
+      \end{block}
+    \column{0.48\textwidth}
+      \begin{block}{Campus dataset}
+        \small
+        50 day images and 64 night queries. In this talk we focus on the \textbf{strict image-level protocol}, which is the more conservative evaluation. All experiments are \textbf{training-free transfer tests} unless explicitly stated otherwise.
+      \end{block}
+  \end{columns}
 \end{frame}
 
-\begin{frame}{Data and Evaluation Setup}
+\begin{frame}{5. Results on GardensPoint}
   \begin{columns}[T,totalwidth=\textwidth]
-    \column{0.46\textwidth}
-      \begin{block}{Benchmark}
-        \centering
-        \Large GardensPoint
-
-        \vspace{0.4em}
-        \large controlled day-to-night evaluation
-      \end{block}
-
-      \vspace{0.5em}
-      \begin{block}{Metrics}
-        \centering
-        \large AUC
-
-        \vspace{0.2em}
-        \large Recall@1 / 5 / 10
-
-        \vspace{0.2em}
-        \large Recall@100P
-      \end{block}
-
-    \column{0.50\textwidth}
-      \begin{block}{Our campus dataset}
-        \centering
-        \large 50 day reference images
-
-        \vspace{0.2em}
-        \large 64 night queries
-
-        \vspace{0.2em}
-        \large 33 matched, 31 no-match
-      \end{block}
+    \column{0.52\textwidth}
+      \begin{center}
+      \begin{tabular}{lcccc}
+        \toprule
+        \textbf{Descriptor} & \textbf{AUC} & \textbf{R@1} & \textbf{R@5} & \textbf{R@10} \\
+        \midrule
+        CosPlace & 0.592 & 0.350 & 0.840 & 0.925 \\
+        EigenPlaces & 0.676 & 0.370 & 0.840 & 0.940 \\
+        PatchNetVLAD & 0.802 & 0.440 & 0.800 & 0.840 \\
+        SALAD & \textbf{0.924} & \textbf{0.450} & \textbf{0.955} & \textbf{0.990} \\
+        SelaVPR++ & \textbf{0.937} & \textbf{0.465} & 0.950 & \textbf{0.995} \\
+        VPRTempo & 0.065 & 0.095 & 0.230 & 0.290 \\
+        \bottomrule
+      \end{tabular}
+      \end{center}
 
       \vspace{0.6em}
-      \centering
-      \includegraphics[width=0.44\linewidth,height=0.28\textheight,keepaspectratio]{../../custom_dataset/day_images/image001.jpg}
-      \hfill
-      \includegraphics[width=0.44\linewidth,height=0.28\textheight,keepaspectratio]{../../custom_dataset/night_images/image001.jpg}
+      \begin{block}{Takeaway}
+        \small
+        The strongest benchmark descriptors are now \textbf{SelaVPR++ and SALAD}. VPRTempo transfers very poorly with the official demo checkpoint.
+      \end{block}
+
+      \begin{block}{Strict interpretation}
+        \small
+        No obvious leakage was found, but the most trustworthy evidence is still \textbf{R@1 / R@5 / R@10}. GardensPoint soft ground truth makes AUC and R@100P more lenient.
+      \end{block}
+
+    \column{0.44\textwidth}
+      \includegraphics[width=\linewidth,height=0.60\textheight,keepaspectratio]{../../output_images/runs/benchmarks/0010_demo_gardenspoint_salad_20260424_161122/matches_examples.png}
   \end{columns}
 \end{frame}
 
-\begin{frame}{Methodology}
-  \begin{center}
-  \begin{tikzpicture}[
-    node distance=10mm and 8mm,
-    box/.style={draw, rounded corners, minimum width=27mm, minimum height=11mm, align=center, fill=softgray},
-    arrow/.style={-{Latex[length=2.2mm]}, thick, accent}
-  ]
-    \node[box, fill=softblue] (map) {Reference map\\day images or\\recorded traversal};
-    \node[box, right=of map, fill=softgreen] (desc) {Descriptor extraction\\CosPlace / EigenPlaces};
-    \node[box, right=of desc, fill=softorange] (store) {Reference map store\\descriptors + paths\\+ metadata};
-    \node[box, below=14mm of desc, fill=softblue] (query) {Live query frame};
-    \node[box, right=of query, fill=softgreen] (search) {Search backend\\exact / HNSW / FAISS};
-    \node[box, right=of search, fill=softorange] (out) {Top-$k$ matches\\thresholded decision\\live overlay};
-
-    \draw[arrow] (map) -- (desc);
-    \draw[arrow] (desc) -- (store);
-    \draw[arrow] (query) -- (search);
-    \draw[arrow] (store) |- (search);
-    \draw[arrow] (search) -- (out);
-  \end{tikzpicture}
-  \end{center}
-
-  \vspace{0.8em}
+\begin{frame}{6. Why GardensPoint Is Still Our Main Benchmark}
   \begin{columns}[T,totalwidth=\textwidth]
-    \column{0.33\textwidth}
-      \centering \pill{softblue}{Offline: build map}
-    \column{0.33\textwidth}
-      \centering \pill{softgreen}{Online: search + rank}
-    \column{0.33\textwidth}
-      \centering \pill{softorange}{Demo: webcam / phone / robot}
+    \column{0.54\textwidth}
+      \begin{block}{Why we keep it}
+        \small
+        GardensPoint is still the right primary benchmark for this project because it directly matches the task we care about: \textbf{day-to-night place recognition}. It gives us a clean, controlled test before moving to the noisier campus setting.
+      \end{block}
+
+      \begin{block}{What we learn from it}
+        \small
+        \begin{itemize}
+          \item whether a descriptor can handle a strong day-night appearance gap
+          \item whether the correct place is ranked first or only appears later in the list
+          \item whether a strong result is consistent across many query frames
+        \end{itemize}
+      \end{block}
+
+      \begin{block}{How we interpret it}
+        \small
+        We treat GardensPoint as the \textbf{controlled benchmark}, then use the campus dataset as the \textbf{transfer test} for our own environment.
+      \end{block}
+
+    \column{0.42\textwidth}
+      \includegraphics[width=\linewidth,height=0.68\textheight,keepaspectratio]{../../output_images/runs/benchmarks/0010_demo_gardenspoint_salad_20260424_161122/pr_curve.png}
   \end{columns}
 \end{frame}
 
-\begin{frame}{Live System Architecture}
+\begin{frame}{7. Campus Results: Strict Image-Level}
+  \begin{columns}[T,totalwidth=\textwidth]
+    \column{0.52\textwidth}
+      \begin{center}
+      \begin{tabular}{lccccc}
+        \toprule
+        \textbf{Descriptor} & \textbf{AUC} & \textbf{R@100P} & \textbf{R@1} & \textbf{R@5} & \textbf{R@10} \\
+        \midrule
+        CosPlace & 0.470 & 0.030 & 0.727 & 1.000 & 1.000 \\
+        HDC-DELF & 0.488 & 0.030 & 0.788 & 0.939 & 0.970 \\
+        SALAD & 0.504 & 0.030 & \textbf{0.818} & \textbf{1.000} & \textbf{1.000} \\
+        SelaVPR++ & 0.464 & \textbf{0.061} & \textbf{0.909} & \textbf{1.000} & \textbf{1.000} \\
+        VPRTempo & 0.064 & 0.000 & 0.182 & 0.515 & 0.606 \\
+        \bottomrule
+      \end{tabular}
+      \end{center}
+
+      \vspace{0.6em}
+      \begin{block}{Interpretation}
+        \small
+        Under strict 1-to-1 labels, \textbf{SelaVPR++ gives the strongest top-1 retrieval} while SALAD stays strong. No-match rejection remains difficult, and VPRTempo is not competitive in this transfer setting.
+      \end{block}
+
+    \column{0.44\textwidth}
+      \includegraphics[width=\linewidth,height=0.60\textheight,keepaspectratio]{../../output_images/runs/campus_strict/0004_campus_strict_salad_20260424_150007/matches_examples.png}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{8. What The Strict Campus Results Mean}
+  \begin{columns}[T,totalwidth=\textwidth]
+    \column{0.44\textwidth}
+      \includegraphics[width=\linewidth,height=0.56\textheight,keepaspectratio]{../../output_images/runs/campus_strict/0004_campus_strict_salad_20260424_150007/pr_curve.png}
+
+      \vspace{0.4em}
+      \begin{block}{Key observation}
+        \small
+        The campus setting is much harsher than GardensPoint because it mixes day-night change with viewpoint change, limited map coverage, and many hard no-match cases.
+      \end{block}
+
+    \column{0.52\textwidth}
+      \begin{block}{Interpretation}
+        \small
+        \begin{itemize}
+          \item \textbf{SelaVPR++} gives the best top-1 retrieval under the strict protocol.
+          \item \textbf{SALAD} stays consistently strong and reaches perfect R@5 and R@10.
+          \item \textbf{CosPlace} remains a strong practical baseline.
+          \item \textbf{VPRTempo} is not competitive in this transfer setup.
+        \end{itemize}
+      \end{block}
+
+      \begin{block}{Main lesson}
+        \small
+        Strong modern descriptors clearly help, but descriptor quality alone does not fully solve rejection and ambiguity in a small real campus deployment.
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{9. Live System and Demo}
   \begin{center}
   \begin{tikzpicture}[
-    node distance=10mm and 8mm,
-    box/.style={draw, rounded corners, minimum width=28mm, minimum height=11mm, align=center, fill=softgray},
+    node distance=9mm and 8mm,
+    box/.style={draw, rounded corners, minimum width=26mm, minimum height=10mm, align=center, fill=softgray},
     arrow/.style={-{Latex[length=2.2mm]}, thick, accent}
   ]
     \node[box, fill=softblue] (source) {Webcam / phone /\\TurboPi stream};
-    \node[box, right=of source, fill=softgreen] (record) {Record traversal\\or use image folder};
-    \node[box, right=of record, fill=softorange] (build) {Build live map\\descriptors + paths};
-    \node[box, below=14mm of record, fill=softblue] (query) {Live query frame};
-    \node[box, right=of query, fill=softgreen] (ann) {Search backend\\Exact / HNSW / FAISS};
-    \node[box, right=of ann, fill=softorange] (decision) {Top-$k$ retrieval\\thresholded decision};
-
-    \draw[arrow] (source) -- (record);
-    \draw[arrow] (record) -- (build);
+    \node[box, right=of source, fill=softgreen] (map) {Build map\\from images or traversal};
+    \node[box, right=of map, fill=softorange] (store) {Saved map\\descriptors + paths};
+    \node[box, below=13mm of map, fill=softblue] (query) {Live query frame};
+    \node[box, right=of query, fill=softgreen] (search) {Search backend\\Exact / HNSW / FAISS};
+    \node[box, right=of search, fill=softorange] (decision) {Top-$k$ matches\\+ thresholded decision};
+    \draw[arrow] (source) -- (map);
+    \draw[arrow] (map) -- (store);
     \draw[arrow] (source) |- (query);
-    \draw[arrow] (build) |- (ann);
-    \draw[arrow] (query) -- (ann);
-    \draw[arrow] (ann) -- (decision);
+    \draw[arrow] (store.south) -- (search.north);
+    \draw[arrow] (query) -- (search);
+    \draw[arrow] (search) -- (decision);
   \end{tikzpicture}
   \end{center}
 
-  \vspace{0.9em}
-  \begin{columns}[T,totalwidth=\textwidth]
-    \column{0.32\textwidth}
-      \centering \pill{softblue}{Config-driven pipeline}
-    \column{0.32\textwidth}
-      \centering \pill{softgreen}{Modular search layer}
-    \column{0.32\textwidth}
-      \centering \pill{softorange}{Ready for live demo}
-  \end{columns}
+  \vspace{0.8em}
+  \begin{block}{Current status}
+    \small
+    We already have an end-to-end live pipeline for map building and localization. The next step is to connect the strongest descriptor choices and lightweight temporal ideas to the demo path.
+  \end{block}
 \end{frame}
 
-\begin{frame}{Benchmark Results}
-  \begin{columns}[T,totalwidth=\textwidth]
-    \column{0.58\textwidth}
-      \centering
-      \begin{tabular}{lcccc}
-        \toprule
-        \textbf{Model} & \textbf{AUC} & \textbf{R@1} & \textbf{R@5} & \textbf{R@10} \\
-        \midrule
-        CosPlace & 0.592 & 0.350 & 0.840 & 0.925 \\
-        EigenPlaces & \textbf{0.676} & \textbf{0.370} & 0.840 & \textbf{0.940} \\
-        AlexNet conv3 & 0.195 & 0.300 & 0.665 & 0.745 \\
-        SAD & 0.030 & 0.090 & 0.225 & 0.305 \\
-        \bottomrule
-      \end{tabular}
-
-      \vspace{0.8em}
-      \centering
-      \pill{softgreen}{Best baseline: EigenPlaces}
-
-    \column{0.38\textwidth}
-      \begin{block}{Takeaway}
-        \centering
-        \Large Top-5 is already strong
-
-        \vspace{0.6em}
-        \large Main gap: ranking the correct place first
-      \end{block}
-  \end{columns}
+\begin{frame}{10. Main Findings}
+  \begin{enumerate}
+    \item Our hypothesis is supported: descriptor choice strongly affects nocturnal VPR performance.
+    \item GardensPoint remains the right primary benchmark because it directly matches the day-to-night problem.
+    \item The best descriptors we tested are now \textbf{SelaVPR++ and SALAD}, with CosPlace still a strong practical baseline.
+    \item The strict campus dataset is much harder than GardensPoint and exposes the remaining gap between benchmark success and deployment success.
+    \item VPRTempo did \textbf{not} transfer well here, mainly because the official checkpoint is a Nordland demo model rather than a universal descriptor.
+    \item The live system is already in place, so the next phase is to connect the strongest descriptors and lightweight temporal improvements to a robust demo.
+  \end{enumerate}
 \end{frame}
 
-\begin{frame}{Campus Transfer Results}
-  \begin{columns}[T,totalwidth=\textwidth]
-    \column{0.58\textwidth}
-      \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{../../output_images/campus_pr_curve.png}
+\begin{frame}{11. Next Steps}
+  \begin{block}{What we would do next}
+    \small
+    \begin{itemize}
+      \item integrate \textbf{SALAD} and \textbf{SelaVPR++} into the live path as the strongest current descriptors
+      \item test lightweight improvements such as \textbf{CLAHE} and \textbf{sequence matching}
+      \item improve \textbf{no-match rejection} for campus deployment
+      \item compare accuracy against runtime and deployment cost for a practical robot demo
+    \end{itemize}
+  \end{block}
 
-    \column{0.38\textwidth}
-      \begin{block}{Campus / CosPlace}
-        \centering
-        \Large R@1 = 0.727
-
-        \vspace{0.3em}
-        \Large R@5 = 1.000
-
-        \vspace{0.3em}
-        \Large AUC = 0.470
-      \end{block}
-
-      \vspace{0.6em}
-      \centering
-      \pill{softblue}{50 day refs}
-
-      \vspace{0.3em}
-      \pill{softorange}{64 night queries}
-
-      \vspace{0.3em}
-      \pill{softgreen}{33 matched / 31 no-match}
-  \end{columns}
-\end{frame}
-
-\begin{frame}{What We Learned From Relabeling}
-  \begin{columns}[T,totalwidth=\textwidth]
-    \column{0.52\textwidth}
-      \includegraphics[width=\linewidth,height=0.63\textheight,keepaspectratio]{../../custom_dataset_place_level/place_flow_visual.jpg}
-
-      \vspace{0.4em}
-      \centering \pill{softgreen}{10 place IDs}
-
-    \column{0.44\textwidth}
-      \begin{block}{Main finding}
-        \centering
-        \Large Original campus setup
-
-        \vspace{0.2em}
-        \Large was too strict for
-
-        \vspace{0.2em}
-        \Large multi-view place recognition
-      \end{block}
-
-      \vspace{0.5em}
-      \begin{block}{After place-level relabeling}
-        \centering
-        \large CosPlace: R@1 \ 0.727 $\rightarrow$ 0.969
-
-        \vspace{0.2em}
-        \large EigenPlaces: AUC \ 0.443 $\rightarrow$ 0.663
-
-        \vspace{0.2em}
-        \large NetVLAD: R@1 \ 0.394 $\rightarrow$ 0.891
-      \end{block}
-  \end{columns}
-\end{frame}
-
-\begin{frame}{Qualitative Result}
-  \begin{columns}[T,totalwidth=\textwidth]
-    \column{0.49\textwidth}
-      \includegraphics[width=\linewidth,height=0.68\textheight,keepaspectratio]{../../output_images/campus_similarity_matrix.png}
-
-      \vspace{0.4em}
-      \centering \pill{softblue}{Similarity structure}
-
-    \column{0.49\textwidth}
-      \includegraphics[width=\linewidth,height=0.68\textheight,keepaspectratio]{../../output_images/campus_matching_results.png}
-
-      \vspace{0.4em}
-      \centering \pill{softorange}{Correct vs wrong matches}
-  \end{columns}
-\end{frame}
-
-\begin{frame}{What We Built Beyond Offline Evaluation}
-  \begin{columns}[T,totalwidth=\textwidth]
-    \column{0.48\textwidth}
-      \includegraphics[width=\linewidth,height=0.34\textheight,keepaspectratio]{../../custom_dataset/day_images/image010.jpg}
-
-      \vspace{0.6em}
-      \includegraphics[width=\linewidth,height=0.34\textheight,keepaspectratio]{../../custom_dataset/night_images/image010.jpg}
-
-    \column{0.48\textwidth}
-      \begin{block}{Current practical pipeline}
-        \centering
-        \large Build map from images or traversal video
-
-        \vspace{0.4em}
-        \large Run live localization from webcam / stream
-
-        \vspace{0.4em}
-        \large Swap search backends through config
-      \end{block}
-
-      \vspace{0.6em}
-      \centering
-      \pill{softblue}{Applied CV emphasis}
-
-      \vspace{0.3em}
-      \pill{softgreen}{Robot-facing deployment}
-
-      \vspace{0.3em}
-      \pill{softorange}{Demo-ready workflow}
-  \end{columns}
-\end{frame}
-
-\begin{frame}{Conclusion}
-  \begin{columns}[T,totalwidth=\textwidth]
-    \column{0.32\textwidth}
-      \begin{block}{1}
-        \centering
-        \Large Strong benchmark baseline
-      \end{block}
-
-    \column{0.32\textwidth}
-      \begin{block}{2}
-        \centering
-        \Large Campus transfer improved after place-level relabeling
-      \end{block}
-
-    \column{0.32\textwidth}
-      \begin{block}{3}
-        \centering
-        \Large End-to-end live system is in place
-      \end{block}
-  \end{columns}
-
-  \vspace{1em}
-  \centering
-  \pill{softblue}{Key takeaway: strict labels under-credited multi-view matches} \hspace{0.8em}
-  \pill{softgreen}{Search at larger map scale} \hspace{0.8em}
-  \pill{softorange}{Robust live demo}
-\end{frame}
-
-\begin{frame}{Presentation Logistics and Deliverables}
-  \begin{columns}[T,totalwidth=\textwidth]
-    \column{0.48\textwidth}
-      \begin{block}{Presentation}
-        \centering
-        \Large Apr 26, 2026
-
-        \vspace{0.3em}
-        \Large 2:00 PM, F203
-
-        \vspace{0.6em}
-        \large 8 min talk + 4 min Q\&A
-
-        \vspace{0.4em}
-        \large Random presentation order
-      \end{block}
-
-    \column{0.48\textwidth}
-      \begin{block}{Submission}
-        \centering
-        \large 5-min video presentation
-
-        \vspace{0.3em}
-        \large Due Apr 25, 11:59 PM
-
-        \vspace{0.6em}
-        \large Final report + reproducible GitHub + demo link
-
-        \vspace{0.3em}
-        \large Due Apr 30, 11:59 PM CAT
-      \end{block}
-  \end{columns}
-\end{frame}
-
-\begin{frame}[plain]
-  \centering
-  \vspace{2.2cm}
-  {\Huge \textbf{Thank you}}
-
-  \vspace{1.2em}
-  {\Large Demo / Questions}
+  \vspace{0.6em}
+  \begin{block}{Demo message}
+    \small
+    Our contribution is not only a benchmark comparison, but a practical descriptor study for night-time localization in a real campus environment.
+  \end{block}
 \end{frame}
 
 \end{document}

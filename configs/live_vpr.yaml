@@ -24,6 +24,8 @@ general:
   # - CosPlace: strong default for this project
   # - EigenPlaces: good benchmark alternative
   # - SALAD: modern DINOv2-based descriptor, stronger but heavier
+  # - SelaVPR++: modern DINOv2-based VPR descriptor from the 2025 T-PAMI paper
+  # - VPRTempo: dataset-specific spiking VPR model, requires a trained checkpoint
   # - NetVLAD, PatchNetVLAD: classical VPR descriptors
   # - AlexNet, HDC-DELF, SAD: lighter / baseline-style options
   descriptor: CosPlace

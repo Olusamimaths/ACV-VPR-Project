@@ -14,7 +14,7 @@ install_require_list = [
     'scikit-image', 'tensorflow', 'tensorflow_hub',
     'torch', 'torchvision', 'tqdm', 'PyYAML',
     'pandas', 'prettytable', 'pytorch-lightning',
-    'pytorch-metric-learning', 'torchmetrics']
+    'pytorch-metric-learning', 'torchmetrics', 'vprtempo']
 
 # workaround as opencv-python does not show up in "pip list" within a conda environment
 # we do not care as conda recipe has py-opencv requirement anyhow

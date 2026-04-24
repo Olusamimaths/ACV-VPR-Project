@@ -42,6 +42,14 @@ def main():
                        help='Number of correct matches to display (default: 3)')
     parser.add_argument('--n_wrong', type=int, default=5,
                        help='Number of wrong matches to display (default: 5)')
+    parser.add_argument('--vprtempo_model_path', type=str, default=None,
+                       help='Checkpoint path for VPRTempo (required when descriptor=VPRTempo)')
+    parser.add_argument('--vprtempo_dims', type=str, default='56,56',
+                       help="Input dims for VPRTempo preprocessing, e.g. '56,56'")
+    parser.add_argument('--vprtempo_patches', type=int, default=15,
+                       help='Patch normalization window used by VPRTempo (default: 15)')
+    parser.add_argument('--vprtempo_batch_size', type=int, default=8,
+                       help='Batch size for VPRTempo feature extraction (default: 8)')
     args = parser.parse_args()
 
     print('=' * 70)
@@ -69,7 +77,15 @@ def main():
 
     # Load feature extractor
     print(f'\n===== Load {args.descriptor} feature extractor')
-    feature_extractor = create_feature_extractor(args.descriptor)
+    extractor_kwargs = {}
+    if args.descriptor == 'VPRTempo':
+        extractor_kwargs = {
+            'vprtempo_model_path': args.vprtempo_model_path,
+            'vprtempo_dims': args.vprtempo_dims,
+            'vprtempo_patches': args.vprtempo_patches,
+            'vprtempo_batch_size': args.vprtempo_batch_size,
+        }
+    feature_extractor = create_feature_extractor(args.descriptor, **extractor_kwargs)
 
     # Extract features and compute similarity matrix
     if args.descriptor not in PATCH_DESCRIPTOR_NAMES | PAIRWISE_DISTANCE_DESCRIPTOR_NAMES:

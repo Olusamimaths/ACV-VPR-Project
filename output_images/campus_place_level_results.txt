@@ -1,20 +1,20 @@
 Campus Dataset VPR Test Results (Place-Level)
 ======================================================================
 
-Command: test_campus_dataset_place_level.py --descriptor SALAD --save_results
-Descriptor: SALAD
+Command: test_campus_dataset_place_level.py --descriptor SelaVPR++ --save_results
+Descriptor: SelaVPR++
 Dataset directory: custom_dataset_place_level/
 Database images: 50
 Query images: 64
 Queries with place-level matches: 64
 Queries without place-level matches: 0
-True positives (thresholded): 23
+True positives (thresholded): 10
 False positives (thresholded): 0
 Queries rematched from original -npm labels: 12
 Unique place IDs: 10
 
-AUC: 0.653
-R@100P: 0.130
+AUC: 0.658
+R@100P: 0.158
 R@1: 0.969
 R@5: 1.000
 R@10: 1.000

@@ -16,6 +16,8 @@ SUPPORTED_DESCRIPTORS = [
     "CosPlace",
     "EigenPlaces",
     "SALAD",
+    "SelaVPR++",
+    "VPRTempo",
     "SAD",
 ]
 
@@ -36,7 +38,7 @@ def _load_patchnetvlad_config(descriptor_name: str) -> configparser.ConfigParser
     return config
 
 
-def create_feature_extractor(descriptor_name: str) -> Any:
+def create_feature_extractor(descriptor_name: str, **kwargs: Any) -> Any:
     if descriptor_name not in SUPPORTED_DESCRIPTORS:
         raise ValueError(f"Unsupported descriptor: {descriptor_name}")
 
@@ -72,5 +74,20 @@ def create_feature_extractor(descriptor_name: str) -> Any:
         from feature_extraction.feature_extractor_salad import SALADFeatureExtractor
 
         return SALADFeatureExtractor()
+    if descriptor_name == "SelaVPR++":
+        from feature_extraction.feature_extractor_selavprplusplus import (
+            SelaVPRPlusPlusFeatureExtractor,
+        )
+
+        return SelaVPRPlusPlusFeatureExtractor()
+    if descriptor_name == "VPRTempo":
+        from feature_extraction.feature_extractor_vprtempo import VPRTempoFeatureExtractor
+
+        return VPRTempoFeatureExtractor(
+            checkpoint_path=kwargs.get("vprtempo_model_path"),
+            dims=kwargs.get("vprtempo_dims"),
+            patches=kwargs.get("vprtempo_patches", 15),
+            batch_size=kwargs.get("vprtempo_batch_size", 8),
+        )
 
     raise ValueError(f"Unsupported descriptor: {descriptor_name}")

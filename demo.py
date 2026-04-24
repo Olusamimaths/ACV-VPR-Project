@@ -43,6 +43,10 @@ def main():
     parser.add_argument('--n_wrong', type=int, default=1, help='Number of wrong matches to display (default: 1)')
     parser.add_argument('--save_results', action='store_true', help='Save visualization results to output_images/')
     parser.add_argument('--output_root', type=str, default=DEFAULT_OUTPUT_ROOT, help='Base directory for saved results (default: output_images/)')
+    parser.add_argument('--vprtempo_model_path', type=str, default=None, help='Checkpoint path for VPRTempo (required when descriptor=VPRTempo)')
+    parser.add_argument('--vprtempo_dims', type=str, default='56,56', help="Input dims for VPRTempo preprocessing, e.g. '56,56'")
+    parser.add_argument('--vprtempo_patches', type=int, default=15, help='Patch normalization window used by VPRTempo (default: 15)')
+    parser.add_argument('--vprtempo_batch_size', type=int, default=8, help='Batch size for VPRTempo feature extraction (default: 8)')
     args = parser.parse_args()
 
     print('========== Start VPR with {} descriptor on dataset {}'.format(args.descriptor, args.dataset))
@@ -69,7 +73,15 @@ def main():
 
     imgs_db, imgs_q, GThard, GTsoft = dataset.load()
 
-    feature_extractor = create_feature_extractor(args.descriptor)
+    extractor_kwargs = {}
+    if args.descriptor == 'VPRTempo':
+        extractor_kwargs = {
+            'vprtempo_model_path': args.vprtempo_model_path,
+            'vprtempo_dims': args.vprtempo_dims,
+            'vprtempo_patches': args.vprtempo_patches,
+            'vprtempo_batch_size': args.vprtempo_batch_size,
+        }
+    feature_extractor = create_feature_extractor(args.descriptor, **extractor_kwargs)
 
     if args.descriptor not in PATCH_DESCRIPTOR_NAMES | PAIRWISE_DISTANCE_DESCRIPTOR_NAMES:
         print('===== Compute reference set descriptors')

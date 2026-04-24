@@ -96,6 +96,7 @@ class TorchHubGlobalFeatureExtractor(FeatureExtractor):
         missing_dependency_message: str | None = None,
         allow_mps: bool = True,
         mps_disabled_reason: str | None = None,
+        unwrap_dataparallel: bool = False,
     ):
         self.device = select_torch_device(
             allow_mps=allow_mps,
@@ -111,6 +112,8 @@ class TorchHubGlobalFeatureExtractor(FeatureExtractor):
             if missing_dependency_message is not None:
                 raise ModuleNotFoundError(missing_dependency_message) from exc
             raise
+        if unwrap_dataparallel and isinstance(self.model, torch.nn.DataParallel):
+            self.model = self.model.module
         self.model = self.model.to(self.device)
         self.model.eval()
 
