@@ -17,13 +17,19 @@
 #
 
 import argparse
-import configparser
-import os
+import sys
 
 from evaluation.metrics import createPR, recallAt100precision, recallAtK
 from evaluation import show_correct_and_wrong_matches
+from evaluation.run_output import DEFAULT_OUTPUT_ROOT, ExperimentRunOutput
 from matching import matching
 from datasets.load_dataset import GardensPointDataset, StLuciaDataset, SFUDataset
+from feature_extraction.factory import (
+    PATCH_DESCRIPTOR_NAMES,
+    PAIRWISE_DISTANCE_DESCRIPTOR_NAMES,
+    SUPPORTED_DESCRIPTORS,
+    create_feature_extractor,
+)
 import numpy as np
 
 from matplotlib import pyplot as plt
@@ -31,14 +37,24 @@ from matplotlib import pyplot as plt
 
 def main():
     parser = argparse.ArgumentParser(description='Visual Place Recognition: A Tutorial. Code repository supplementing our paper.')
-    parser.add_argument('--descriptor', type=str, default='HDC-DELF', choices=['HDC-DELF', 'AlexNet', 'NetVLAD', 'PatchNetVLAD', 'CosPlace', 'EigenPlaces', 'SAD'], help='Select descriptor (default: HDC-DELF)')
+    parser.add_argument('--descriptor', type=str, default='HDC-DELF', choices=SUPPORTED_DESCRIPTORS, help='Select descriptor (default: HDC-DELF)')
     parser.add_argument('--dataset', type=str, default='GardensPoint', choices=['GardensPoint', 'StLucia', 'SFU'], help='Select dataset (default: GardensPoint)')
     parser.add_argument('--n_correct', type=int, default=1, help='Number of correct matches to display (default: 1)')
     parser.add_argument('--n_wrong', type=int, default=1, help='Number of wrong matches to display (default: 1)')
     parser.add_argument('--save_results', action='store_true', help='Save visualization results to output_images/')
+    parser.add_argument('--output_root', type=str, default=DEFAULT_OUTPUT_ROOT, help='Base directory for saved results (default: output_images/)')
     args = parser.parse_args()
 
     print('========== Start VPR with {} descriptor on dataset {}'.format(args.descriptor, args.dataset))
+
+    run_output = None
+    if args.save_results:
+        run_output = ExperimentRunOutput.create(
+            args.output_root,
+            run_slug=f'demo_{args.dataset}_{args.descriptor}',
+            category='benchmarks',
+        )
+        print(f'===== Saving run outputs to {run_output.run_dir}')
 
     # load dataset
     print('===== Load dataset')
@@ -53,36 +69,9 @@ def main():
 
     imgs_db, imgs_q, GThard, GTsoft = dataset.load()
 
-    if args.descriptor == 'HDC-DELF':
-        from feature_extraction.feature_extractor_holistic import HDCDELF
-        feature_extractor = HDCDELF()
-    elif args.descriptor == 'AlexNet':
-        from feature_extraction.feature_extractor_holistic import AlexNetConv3Extractor
-        feature_extractor = AlexNetConv3Extractor()
-    elif args.descriptor == 'SAD':
-        from feature_extraction.feature_extractor_holistic import SAD
-        feature_extractor = SAD()
-    elif args.descriptor == 'NetVLAD' or args.descriptor == 'PatchNetVLAD':
-        from feature_extraction.feature_extractor_patchnetvlad import PatchNetVLADFeatureExtractor
-        from patchnetvlad.tools import PATCHNETVLAD_ROOT_DIR
-        if args.descriptor == 'NetVLAD':
-            configfile = os.path.join(PATCHNETVLAD_ROOT_DIR, 'configs/netvlad_extract.ini')
-        else:
-            configfile = os.path.join(PATCHNETVLAD_ROOT_DIR, 'configs/speed.ini')
-        assert os.path.isfile(configfile)
-        config = configparser.ConfigParser()
-        config.read(configfile)
-        feature_extractor = PatchNetVLADFeatureExtractor(config)
-    elif args.descriptor == 'CosPlace':
-        from feature_extraction.feature_extractor_cosplace import CosPlaceFeatureExtractor
-        feature_extractor = CosPlaceFeatureExtractor()
-    elif args.descriptor == 'EigenPlaces':
-        from feature_extraction.feature_extractor_eigenplaces import EigenPlacesFeatureExtractor
-        feature_extractor = EigenPlacesFeatureExtractor()
-    else:
-        raise ValueError('Unknown descriptor: ' + args.descriptor)
+    feature_extractor = create_feature_extractor(args.descriptor)
 
-    if args.descriptor != 'PatchNetVLAD' and args.descriptor != 'SAD':
+    if args.descriptor not in PATCH_DESCRIPTOR_NAMES | PAIRWISE_DISTANCE_DESCRIPTOR_NAMES:
         print('===== Compute reference set descriptors')
         db_D_holistic = feature_extractor.compute_features(imgs_db)
         print('===== Compute query set descriptors')
@@ -93,7 +82,7 @@ def main():
         db_D_holistic = db_D_holistic / np.linalg.norm(db_D_holistic , axis=1, keepdims=True)
         q_D_holistic = q_D_holistic / np.linalg.norm(q_D_holistic , axis=1, keepdims=True)
         S = np.matmul(db_D_holistic , q_D_holistic.transpose())
-    elif args.descriptor == 'SAD':
+    elif args.descriptor in PAIRWISE_DISTANCE_DESCRIPTOR_NAMES:
         print('===== Compute reference set descriptors')
         db_D_holistic = feature_extractor.compute_features(imgs_db)
         print('===== Compute query set descriptors')
@@ -122,6 +111,8 @@ def main():
     plt.imshow(S)
     plt.axis('off')
     plt.title('Similarity matrix S')
+    if run_output is not None:
+        run_output.savefig(fig, 'similarity_matrix.png', legacy_filename=f'{args.dataset}_similarity_matrix.png')
 
     # matching decision making
     print('===== Match images')
@@ -137,13 +128,18 @@ def main():
     # evaluation
     print('===== Evaluation')
     # show correct and wrong image matches
-    save_matches_path = f'output_images/{args.dataset}_matches_examples.png' if args.save_results else None
+    save_matches_path = run_output.run_path('matches_examples.png') if run_output is not None else None
     show_correct_and_wrong_matches.show(
         imgs_db, imgs_q, TP, FP,
         n_correct=args.n_correct,
         n_wrong=args.n_wrong,
         save_path=save_matches_path
     )
+    if run_output is not None and save_matches_path is not None:
+        try:
+            run_output.copy_to_legacy(save_matches_path, legacy_filename=f'{args.dataset}_matches_examples.png')
+        except FileNotFoundError:
+            pass
 
     # show M's
     fig = plt.figure()
@@ -155,6 +151,8 @@ def main():
     ax2.imshow(M2)
     ax2.axis('off')
     ax2.set_title('Thresholding S>=thresh')
+    if run_output is not None:
+        run_output.savefig(fig, 'matching_results.png', legacy_filename=f'{args.dataset}_matching_results.png')
 
     # PR-curve
     P, R = createPR(S, GThard, GTsoft, matching='multi', n_thresh=100)
@@ -166,6 +164,8 @@ def main():
     plt.title('Result on GardensPoint day_right--night_right')
     plt.grid('on')
     plt.draw()
+    if run_output is not None:
+        run_output.savefig(plt.gcf(), 'pr_curve.png', legacy_filename=f'{args.dataset}_pr_curve.png')
 
     # area under curve (AUC)
     AUC = np.trapz(P, R)
@@ -181,6 +181,25 @@ def main():
         RatK[K] = recallAtK(S, GThard, K=K)
 
     print(f'\n===== recall@K (R@K) -- R@1: {RatK[1]:.3f}, R@5: {RatK[5]:.3f}, R@10: {RatK[10]:.3f}')
+
+    if run_output is not None:
+        results_text = (
+            'VPR Benchmark Test Results\n'
+            + '=' * 70 + '\n\n'
+            + f'Command: {" ".join(sys.argv)}\n'
+            + f'Dataset: {args.dataset}\n'
+            + f'Descriptor: {args.descriptor}\n'
+            + f'Database images: {len(imgs_db)}\n'
+            + f'Query images: {len(imgs_q)}\n'
+            + f'True positives (thresholded): {len(TP)}\n'
+            + f'False positives (thresholded): {len(FP)}\n\n'
+            + f'AUC: {AUC:.3f}\n'
+            + f'R@100P: {maxR:.3f}\n'
+            + f'R@1: {RatK[1]:.3f}\n'
+            + f'R@5: {RatK[5]:.3f}\n'
+            + f'R@10: {RatK[10]:.3f}\n'
+        )
+        run_output.write_text('results.txt', results_text, legacy_filename=f'{args.dataset}_results.txt')
 
     plt.show()
 

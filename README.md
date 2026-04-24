@@ -60,6 +60,10 @@ The code was tested with the library versions listed in [requirements.txt](./req
 pip install -r requirements.txt
 ```
 
+On newer Apple Silicon Python environments, the TensorFlow pins in `requirements.txt`
+use a newer compatible release because the old `tensorflow==2.11.1` wheel is no
+longer available there.
+
 You can create a conda environment containing these libraries as follows (or use the provided [environment.yml](./.devcontainer/environment.yml)):
 ```bash
 mamba create -n vprtutorial python numpy pytorch torchvision natsort tqdm opencv pillow scikit-learn faiss matplotlib-base tensorflow tensorflow-hub tqdm scikit-image patchnetvlad -c conda-forge

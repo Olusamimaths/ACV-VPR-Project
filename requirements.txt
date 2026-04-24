@@ -4,12 +4,20 @@ numpy==1.24.3
 opencv-python==4.10.0.84
 patchnetvlad==0.1.7
 Pillow==9.5.0
+pandas==2.2.3
+prettytable==3.16.0
+pytorch-lightning==2.4.0
+pytorch-metric-learning==2.8.1
 PyYAML==6.0.2
 scipy==1.9.1
 setuptools==67.7.2
 scikit_image==0.19.3
-tensorflow==2.11.1
-tensorflow_hub==0.12.0
+# DELF / HDC-DELF dependencies.
+# Updated from the old 2.11/0.12 pins because TensorFlow 2.11.1 no longer
+# provides installable wheels for Apple Silicon Python 3.10.
+tensorflow==2.16.2
+tensorflow_hub==0.16.1
 torch==2.0.0
+torchmetrics==1.4.3
 torchvision==0.15.1a0
 tqdm==4.65.0

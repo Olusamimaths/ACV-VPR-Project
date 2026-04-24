@@ -8,14 +8,19 @@
 #   =====================================================================
 #
 import argparse
-import configparser
-import os
 import sys
 
 from evaluation.metrics import createPR, recallAt100precision, recallAtK
 from evaluation import show_correct_and_wrong_matches
+from evaluation.run_output import DEFAULT_OUTPUT_ROOT, ExperimentRunOutput
 from matching import matching
 from datasets.load_dataset import CampusDataset
+from feature_extraction.factory import (
+    PATCH_DESCRIPTOR_NAMES,
+    PAIRWISE_DISTANCE_DESCRIPTOR_NAMES,
+    SUPPORTED_DESCRIPTORS,
+    create_feature_extractor,
+)
 import numpy as np
 
 from matplotlib import pyplot as plt
@@ -25,13 +30,14 @@ def main():
     parser = argparse.ArgumentParser(
         description='Visual Place Recognition test on custom campus dataset')
     parser.add_argument('--descriptor', type=str, default='CosPlace',
-                       choices=['HDC-DELF', 'AlexNet', 'NetVLAD', 'PatchNetVLAD',
-                               'CosPlace', 'EigenPlaces', 'SAD'],
+                       choices=SUPPORTED_DESCRIPTORS,
                        help='Select descriptor (default: CosPlace)')
     parser.add_argument('--dataset_dir', type=str, default='custom_dataset/',
                        help='Path to campus dataset directory')
     parser.add_argument('--save_results', action='store_true',
                        help='Save results to file')
+    parser.add_argument('--output_root', type=str, default=DEFAULT_OUTPUT_ROOT,
+                       help='Base directory for saved results (default: output_images/)')
     parser.add_argument('--n_correct', type=int, default=3,
                        help='Number of correct matches to display (default: 3)')
     parser.add_argument('--n_wrong', type=int, default=5,
@@ -41,6 +47,15 @@ def main():
     print('=' * 70)
     print(f'Campus VPR Test: {args.descriptor} descriptor')
     print('=' * 70)
+
+    run_output = None
+    if args.save_results:
+        run_output = ExperimentRunOutput.create(
+            args.output_root,
+            run_slug=f'campus_strict_{args.descriptor}',
+            category='campus-strict',
+        )
+        print(f'\n===== Saving run outputs to {run_output.run_dir}')
 
     # Load campus dataset
     print('\n===== Load campus dataset (day -> night)')
@@ -54,37 +69,10 @@ def main():
 
     # Load feature extractor
     print(f'\n===== Load {args.descriptor} feature extractor')
-    if args.descriptor == 'HDC-DELF':
-        from feature_extraction.feature_extractor_holistic import HDCDELF
-        feature_extractor = HDCDELF()
-    elif args.descriptor == 'AlexNet':
-        from feature_extraction.feature_extractor_holistic import AlexNetConv3Extractor
-        feature_extractor = AlexNetConv3Extractor()
-    elif args.descriptor == 'SAD':
-        from feature_extraction.feature_extractor_holistic import SAD
-        feature_extractor = SAD()
-    elif args.descriptor == 'NetVLAD' or args.descriptor == 'PatchNetVLAD':
-        from feature_extraction.feature_extractor_patchnetvlad import PatchNetVLADFeatureExtractor
-        from patchnetvlad.tools import PATCHNETVLAD_ROOT_DIR
-        if args.descriptor == 'NetVLAD':
-            configfile = os.path.join(PATCHNETVLAD_ROOT_DIR, 'configs/netvlad_extract.ini')
-        else:
-            configfile = os.path.join(PATCHNETVLAD_ROOT_DIR, 'configs/speed.ini')
-        assert os.path.isfile(configfile)
-        config = configparser.ConfigParser()
-        config.read(configfile)
-        feature_extractor = PatchNetVLADFeatureExtractor(config)
-    elif args.descriptor == 'CosPlace':
-        from feature_extraction.feature_extractor_cosplace import CosPlaceFeatureExtractor
-        feature_extractor = CosPlaceFeatureExtractor()
-    elif args.descriptor == 'EigenPlaces':
-        from feature_extraction.feature_extractor_eigenplaces import EigenPlacesFeatureExtractor
-        feature_extractor = EigenPlacesFeatureExtractor()
-    else:
-        raise ValueError('Unknown descriptor: ' + args.descriptor)
+    feature_extractor = create_feature_extractor(args.descriptor)
 
     # Extract features and compute similarity matrix
-    if args.descriptor != 'PatchNetVLAD' and args.descriptor != 'SAD':
+    if args.descriptor not in PATCH_DESCRIPTOR_NAMES | PAIRWISE_DISTANCE_DESCRIPTOR_NAMES:
         print('\n===== Compute database descriptors')
         db_D_holistic = feature_extractor.compute_features(imgs_db)
         print('===== Compute query descriptors')
@@ -96,7 +84,7 @@ def main():
         q_D_holistic = q_D_holistic / np.linalg.norm(q_D_holistic, axis=1, keepdims=True)
         S = np.matmul(db_D_holistic, q_D_holistic.transpose())
 
-    elif args.descriptor == 'SAD':
+    elif args.descriptor in PAIRWISE_DISTANCE_DESCRIPTOR_NAMES:
         print('\n===== Compute database descriptors')
         db_D_holistic = feature_extractor.compute_features(imgs_db)
         print('===== Compute query descriptors')
@@ -128,8 +116,8 @@ def main():
     plt.ylabel('Database images (day)')
     plt.title(f'Similarity Matrix S - {args.descriptor}')
     plt.tight_layout()
-    if args.save_results:
-        plt.savefig('output_images/campus_similarity_matrix.png', dpi=150)
+    if run_output is not None:
+        run_output.savefig(fig, 'similarity_matrix.png', legacy_filename='campus_similarity_matrix.png')
 
     # Matching strategies
     print('\n===== Apply matching strategies')
@@ -150,13 +138,18 @@ def main():
     # Visualize matches
     print('\n===== Visualize correct and wrong matches')
     if len(TP) > 0 or len(FP) > 0:
-        save_matches_path = 'output_images/campus_matches_examples.png' if args.save_results else None
+        save_matches_path = run_output.run_path('matches_examples.png') if run_output is not None else None
         show_correct_and_wrong_matches.show(
             imgs_db, imgs_q, TP, FP,
             n_correct=args.n_correct,
             n_wrong=args.n_wrong,
             save_path=save_matches_path
         )
+        if run_output is not None and save_matches_path is not None:
+            try:
+                run_output.copy_to_legacy(save_matches_path, legacy_filename='campus_matches_examples.png')
+            except FileNotFoundError:
+                pass
         print(f'Displaying {min(args.n_correct, len(TP))} correct and {min(args.n_wrong, len(FP))} wrong matches')
     else:
         print('No matches to display')
@@ -177,8 +170,8 @@ def main():
     ax2.set_title('Multi-match (thresholding)')
     ax2.grid(False)
     plt.tight_layout()
-    if args.save_results:
-        plt.savefig('output_images/campus_matching_results.png', dpi=150)
+    if run_output is not None:
+        run_output.savefig(fig, 'matching_results.png', legacy_filename='campus_matching_results.png')
 
     # Evaluation metrics
     print('\n' + '=' * 70)
@@ -197,8 +190,8 @@ def main():
     plt.title(f'Precision-Recall Curve - Campus Dataset\n{args.descriptor}', fontsize=14)
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    if args.save_results:
-        plt.savefig('output_images/campus_pr_curve.png', dpi=150)
+    if run_output is not None:
+        run_output.savefig(fig, 'pr_curve.png', legacy_filename='campus_pr_curve.png')
 
     # Area under curve
     AUC = np.trapz(P, R)
@@ -232,21 +225,26 @@ def main():
             print(f'  Query {q_idx}: best match is DB {best_db_idx} with similarity {best_sim:.3f}')
 
     # Save results summary
-    if args.save_results:
-        results_file = 'output_images/campus_results.txt'
-        with open(results_file, 'w') as f:
-            f.write('Campus Dataset VPR Test Results\n')
-            f.write('=' * 70 + '\n\n')
-            f.write(f'Descriptor: {args.descriptor}\n')
-            f.write(f'Database images: {len(imgs_db)}\n')
-            f.write(f'Query images: {len(imgs_q)}\n')
-            f.write(f'Queries with matches: {np.sum(GThard.any(axis=0))}\n')
-            f.write(f'Queries without matches (-npm): {np.sum(~GThard.any(axis=0))}\n\n')
-            f.write(f'AUC: {AUC:.3f}\n')
-            f.write(f'R@100P: {maxR:.3f}\n')
-            f.write(f'R@1: {RatK[1]:.3f}\n')
-            f.write(f'R@5: {RatK[5]:.3f}\n')
-            f.write(f'R@10: {RatK[10]:.3f}\n')
+    if run_output is not None:
+        results_text = (
+            'Campus Dataset VPR Test Results\n'
+            + '=' * 70 + '\n\n'
+            + f'Command: {" ".join(sys.argv)}\n'
+            + f'Descriptor: {args.descriptor}\n'
+            + f'Dataset directory: {args.dataset_dir}\n'
+            + f'Database images: {len(imgs_db)}\n'
+            + f'Query images: {len(imgs_q)}\n'
+            + f'Queries with matches: {np.sum(GThard.any(axis=0))}\n'
+            + f'Queries without matches (-npm): {np.sum(~GThard.any(axis=0))}\n'
+            + f'True positives (thresholded): {len(TP)}\n'
+            + f'False positives (thresholded): {len(FP)}\n\n'
+            + f'AUC: {AUC:.3f}\n'
+            + f'R@100P: {maxR:.3f}\n'
+            + f'R@1: {RatK[1]:.3f}\n'
+            + f'R@5: {RatK[5]:.3f}\n'
+            + f'R@10: {RatK[10]:.3f}\n'
+        )
+        results_file = run_output.write_text('results.txt', results_text, legacy_filename='campus_results.txt')
         print(f'\nResults saved to {results_file}')
 
     print('\n' + '=' * 70)

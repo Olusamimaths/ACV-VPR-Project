@@ -23,6 +23,7 @@ general:
   # Available values:
   # - CosPlace: strong default for this project
   # - EigenPlaces: good benchmark alternative
+  # - SALAD: modern DINOv2-based descriptor, stronger but heavier
   # - NetVLAD, PatchNetVLAD: classical VPR descriptors
   # - AlexNet, HDC-DELF, SAD: lighter / baseline-style options
   descriptor: CosPlace
