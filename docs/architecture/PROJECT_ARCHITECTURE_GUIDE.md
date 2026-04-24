@@ -15,10 +15,11 @@ For the live pipeline walkthrough, see [LIVE_VPR_PIPELINE.md](../live-vpr/LIVE_V
 
 ## 1. Start Here
 
-There are three main entrypoints:
+There are four main entrypoints:
 
 - [demo.py](../../demo.py): original benchmark-evaluation pipeline for tutorial datasets
-- [test_campus_dataset.py](../../test_campus_dataset.py): benchmark-style evaluation on the custom campus dataset
+- [test_campus_dataset.py](../../test_campus_dataset.py): benchmark-style evaluation on the original strict campus dataset
+- [test_campus_dataset_place_level.py](../../test_campus_dataset_place_level.py): benchmark-style evaluation on the relabeled place-level campus dataset
 - [live_vpr_test.py](../../live_vpr_test.py): newer offline/online live VPR pipeline for map building and live localization
 
 If you are new to the repo, read them in this order:
@@ -27,8 +28,9 @@ If you are new to the repo, read them in this order:
 2. [datasets/load_dataset.py](../../datasets/load_dataset.py)
 3. [matching/matching.py](../../matching/matching.py)
 4. [evaluation/metrics.py](../../evaluation/metrics.py)
-5. [live_vpr_test.py](../../live_vpr_test.py)
-6. [live_vpr/](../../live_vpr)
+5. [test_campus_dataset_place_level.py](../../test_campus_dataset_place_level.py)
+6. [live_vpr_test.py](../../live_vpr_test.py)
+7. [live_vpr/](../../live_vpr)
 
 That gives you the old tutorial flow first, then the newer production-style live flow.
 
@@ -42,6 +44,7 @@ Used by:
 
 - [demo.py](../../demo.py)
 - [test_campus_dataset.py](../../test_campus_dataset.py)
+- [test_campus_dataset_place_level.py](../../test_campus_dataset_place_level.py)
 
 Flow:
 
@@ -99,6 +102,7 @@ Here is the mental model for the top-level folders:
 - [configs/](../../configs): YAML configuration files for the live pipeline
 - [docs/](../../docs): usage and architecture docs
 - [custom_dataset/](../../custom_dataset): your local campus dataset
+- [custom_dataset_place_level/](../../custom_dataset_place_level): relabeled place-level duplicate of the campus dataset for multi-positive evaluation
 - [artifacts/](../../artifacts): saved maps, aliases, inference images, recordings
 - [TurboPi_Backup/](../../TurboPi_Backup): reference copy of the robot-side code, useful for stream integration
 
@@ -114,7 +118,7 @@ Most of the repo works with Python lists of `numpy` images:
 imgs_db, imgs_q, GThard, GTsoft = dataset.load()
 ```
 
-You will see this pattern in [demo.py](../../demo.py) and [test_campus_dataset.py](../../test_campus_dataset.py).
+You will see this pattern in [demo.py](../../demo.py), [test_campus_dataset.py](../../test_campus_dataset.py), and [test_campus_dataset_place_level.py](../../test_campus_dataset_place_level.py).
 
 ### Descriptors
 
@@ -274,25 +278,150 @@ The central functions are:
 
 For qualitative debugging, [evaluation/show_correct_and_wrong_matches.py](../../evaluation/show_correct_and_wrong_matches.py) displays true positives and false positives side by side.
 
-## 6. The Campus Dataset Flow
+## 6. The Campus Dataset Flows
 
-The campus dataset is not a separate architecture. It is a custom dataset plugged into the same evaluation pattern.
+The campus work now has two evaluation protocols that share the same descriptor, matching, and metric code.
 
-The important file is [datasets/load_dataset.py](../../datasets/load_dataset.py), specifically `CampusDataset`.
+### 6.1 Strict Image-Level Campus Flow
+
+This is the original path:
+
+- loader: [datasets/load_dataset.py](../../datasets/load_dataset.py)
+- dataset class: `CampusDataset`
+- entrypoint: [test_campus_dataset.py](../../test_campus_dataset.py)
 
 What it does:
 
 - loads `custom_dataset/day_images` as the reference database
 - loads `custom_dataset/night_images` as the query set
-- creates ground truth from filenames
+- creates ground truth from filename matches like `image042`
 - treats `-npm`, `npmXX`, and `PXL_*` images as no-match queries
+- widens hard GT slightly into `GTsoft` with a small vertical dilation kernel
 
-The script [test_campus_dataset.py](../../test_campus_dataset.py) then runs the same evaluation stages as [demo.py](../../demo.py), but on your local dataset instead of GardensPoint/StLucia/SFU.
+Mental model:
 
-This means:
+```text
+night query image
+-> one exact daytime filename match
+-> one hard GT positive in GThard
+```
 
-- if you understand `demo.py`, you almost understand `test_campus_dataset.py`
-- the main difference is the dataset loader and the saved plots/results
+This protocol is useful when you want very strict scoring, but it can under-credit valid same-place matches if the day image and night image show slightly different views of the same location.
+
+So the practical conclusion is: the original campus setup was not robust to multiple valid views under a strict image-level evaluation. It was often retrieving the right place, but the protocol only credited one exact paired image.
+
+### 6.2 Place-Level Relabeled Campus Flow
+
+This is the newer path:
+
+- loader: [datasets/load_dataset_place_level.py](../../datasets/load_dataset_place_level.py)
+- dataset class: `CampusPlaceLevelDataset`
+- entrypoint: [test_campus_dataset_place_level.py](../../test_campus_dataset_place_level.py)
+
+It uses the duplicated relabeled dataset under [custom_dataset_place_level/](../../custom_dataset_place_level):
+
+- [README.md](../../custom_dataset_place_level/README.md)
+- [day_place_index.csv](../../custom_dataset_place_level/day_place_index.csv)
+- [night_rematches.csv](../../custom_dataset_place_level/night_rematches.csv)
+- [place_flow.csv](../../custom_dataset_place_level/place_flow.csv)
+
+What changed:
+
+- each day image is assigned a `place_id`
+- each night query is linked to one place and a list of valid daytime images for that place
+- some images that were originally treated as `-npm` are now rematched when they are clearly the same physical place from another view
+- `GThard` becomes multi-positive: one query can match several valid day images
+- `GTsoft` is simply copied from `GThard`, because the place-level positives are already expanded explicitly
+
+Mental model:
+
+```text
+night query image
+-> place_id
+-> multiple valid daytime images
+-> several hard GT positives in GThard
+```
+
+The most useful code block is in [datasets/load_dataset_place_level.py](../../datasets/load_dataset_place_level.py):
+
+```python
+valid_names = [
+    part.strip()
+    for part in row.get("valid_day_images", "").split("|")
+    if part.strip()
+]
+
+for valid_name in valid_names:
+    db_idx = day_lookup.get(valid_name)
+    if db_idx is not None:
+        gt[db_idx, q_idx] = True
+```
+
+This is the key architectural change: the evaluation no longer asks “did we retrieve the one exact paired image?” It now asks “did we retrieve any valid view of the same place?”
+
+### 6.3 What Did Not Change
+
+The descriptor and similarity code is still the same benchmark pattern:
+
+```python
+db_D_holistic = feature_extractor.compute_features(imgs_db)
+q_D_holistic = feature_extractor.compute_features(imgs_q)
+S = np.matmul(db_D_holistic, q_D_holistic.transpose())
+```
+
+Matching is also still done by the same functions in [matching/matching.py](../../matching/matching.py):
+
+```python
+M1 = matching.best_match_per_query(S)
+M2 = matching.thresholding(S, "auto")
+```
+
+So the new place-level path does not introduce a new matcher. It changes the meaning of “correct” by changing the GT matrix.
+
+### 6.4 How Matching Is Interpreted Differently
+
+In the strict dataset:
+
+- a query is correct only if the retrieved day image is the one exact labeled pair
+
+In the place-level dataset:
+
+- a query is correct if the retrieved day image belongs to the valid set for that place
+
+That means the same `best_match_per_query(...)` output matrix can be scored very differently depending on which dataset loader produced `GThard`.
+
+### 6.5 How Evaluation Is Done In Both Cases
+
+Both campus scripts still use the same metric functions from [evaluation/metrics.py](../../evaluation/metrics.py):
+
+- `createPR(...)`
+- `recallAt100precision(...)`
+- `recallAtK(...)`
+
+The important current calls in [test_campus_dataset_place_level.py](../../test_campus_dataset_place_level.py) are:
+
+```python
+P, R = createPR(S, GThard, GTsoft, matching="multi", n_thresh=100)
+maxR = recallAt100precision(S, GThard, GTsoft, matching="multi", n_thresh=100)
+RatK[K] = recallAtK(S, GThard, K=K)
+```
+
+What these mean in practice:
+
+- `createPR(...)`: sweeps thresholds over `S` and evaluates precision/recall against the current GT
+- `R@100P`: asks how much recall you can keep while making no false positives
+- `R@K`: asks whether at least one true positive appears in the top-`K` ranked day images
+
+The subtle but important point is this:
+
+- `matching="multi"` was already used before
+- but in the place-level dataset, “multi” now reflects real multi-positive ground truth instead of only one exact image plus a soft tolerance band
+
+So if you understand `demo.py`, you almost understand both campus scripts. The main differences are:
+
+- which loader creates `GThard` / `GTsoft`
+- whether correctness is image-level or place-level
+- which saved plots and report files are produced
 
 ## 7. The Live Pipeline
 
@@ -625,10 +754,11 @@ If you are onboarding this week, use this order:
 1. Read [demo.py](../../demo.py) and understand the classic evaluation flow.
 2. Read [datasets/load_dataset.py](../../datasets/load_dataset.py) to understand how images and ground truth enter the system.
 3. Read [matching/matching.py](../../matching/matching.py) and [evaluation/metrics.py](../../evaluation/metrics.py).
-4. Read [test_campus_dataset.py](../../test_campus_dataset.py) to see how the tutorial flow was adapted for the campus data.
-5. Read [live_vpr_test.py](../../live_vpr_test.py) to understand the higher-level live workflow.
-6. Read [live_vpr/offline.py](../../live_vpr/offline.py), [live_vpr/online.py](../../live_vpr/online.py), [live_vpr/search.py](../../live_vpr/search.py), [live_vpr/ui.py](../../live_vpr/ui.py), and [live_vpr/sources.py](../../live_vpr/sources.py).
-7. Read [live_vpr/config.py](../../live_vpr/config.py) and [configs/live_vpr.yaml](../../configs/live_vpr.yaml) to understand how runtime defaults are supplied.
+4. Read [test_campus_dataset.py](../../test_campus_dataset.py) to see the original strict campus evaluation path.
+5. Read [datasets/load_dataset_place_level.py](../../datasets/load_dataset_place_level.py) and [test_campus_dataset_place_level.py](../../test_campus_dataset_place_level.py) to see how place-level relabeling changes GT construction without changing the rest of the benchmark code.
+6. Read [live_vpr_test.py](../../live_vpr_test.py) to understand the higher-level live workflow.
+7. Read [live_vpr/offline.py](../../live_vpr/offline.py), [live_vpr/online.py](../../live_vpr/online.py), [live_vpr/search.py](../../live_vpr/search.py), [live_vpr/ui.py](../../live_vpr/ui.py), and [live_vpr/sources.py](../../live_vpr/sources.py).
+8. Read [live_vpr/config.py](../../live_vpr/config.py) and [configs/live_vpr.yaml](../../configs/live_vpr.yaml) to understand how runtime defaults are supplied.
 
 After that, you should be able to answer:
 
