@@ -1,0 +1,16 @@
+Campus Dataset VPR Test Results (Place-Level)
+======================================================================
+
+Descriptor: CosPlace
+Database images: 50
+Query images: 64
+Queries with place-level matches: 64
+Queries without place-level matches: 0
+Queries rematched from original -npm labels: 12
+Unique place IDs: 10
+
+AUC: 0.627
+R@100P: 0.114
+R@1: 0.969
+R@5: 1.000
+R@10: 1.000

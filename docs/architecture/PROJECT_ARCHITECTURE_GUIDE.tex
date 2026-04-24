@@ -113,6 +113,8 @@ If you are new to the project, read these files in this order:
   \item \file{matching/matching.py}
   \item \file{evaluation/metrics.py}
   \item \file{test\_campus\_dataset.py}
+  \item \file{datasets/load\_dataset\_place\_level.py}
+  \item \file{test\_campus\_dataset\_place\_level.py}
   \item \file{live\_vpr\_test.py}
   \item the modules under \file{live\_vpr/}
 \end{enumerate}
@@ -135,6 +137,23 @@ Matching layer,
 Metrics + plots
 }
 \caption{The benchmark path computes a full similarity matrix and then evaluates it against ground truth.}
+\end{figure}
+
+\subsection{Campus Evaluation Flows}
+\diagramstyle
+\begin{figure}[H]
+\centering
+\smartdiagramset{uniform color list=boxorange for 7 items}
+\smartdiagram[flow diagram]{
+Night query image,
+Strict loader: exact filename pair,
+Strict GT: one hard positive,
+Place-level loader: place ID + valid day list,
+Place-level GT: several hard positives,
+Shared matching layer,
+Shared metrics layer
+}
+\caption{The campus work now has two evaluation flows. Descriptor extraction, matching, and metrics stay the same; the ground-truth construction changes.}
 \end{figure}
 
 \subsection{Live Flow}
@@ -273,6 +292,36 @@ if match:
 
 \textbf{How it works.} The campus loader uses filenames to decide which night images truly match day images and which should be treated as no-match queries.
 
+\textbf{Practical conclusion.} The original campus setup was not robust to multiple valid views under a strict image-level evaluation. It often retrieved the correct place, but the protocol only credited one exact paired daytime image.
+
+\subsection{\file{datasets/load\_dataset\_place\_level.py}}
+\textbf{What it does.} This file adds a second campus loader, \texttt{CampusPlaceLevelDataset}, while leaving the original strict campus loader intact.
+
+\textbf{Why it matters.} The original campus evaluation assumes one exact day image per night query. The place-level loader changes that assumption so multiple daytime images can be correct if they belong to the same physical place.
+
+\begin{lstlisting}[style=repo, language=Python, caption={Place-level GT construction expands one query into multiple valid positives}]
+valid_names = [
+    part.strip()
+    for part in row.get("valid_day_images", "").split("|")
+    if part.strip()
+]
+
+for valid_name in valid_names:
+    db_idx = day_lookup.get(valid_name)
+    if db_idx is not None:
+        gt[db_idx, q_idx] = True
+\end{lstlisting}
+
+\textbf{How it works.}
+\begin{itemize}[leftmargin=*]
+  \item Day images are grouped by \texttt{place\_id} using \file{custom\_dataset\_place\_level/day\_place\_index.csv}.
+  \item Night queries are rematched using \file{custom\_dataset\_place\_level/night\_rematches.csv}.
+  \item One query can now have several valid positives in \texttt{GThard}.
+  \item \texttt{GTsoft} is copied from \texttt{GThard} because the relabeling has already expanded the acceptable set explicitly.
+\end{itemize}
+
+\textbf{Architectural effect.} The benchmark no longer asks only ``did we retrieve the one exact paired image?'' It can now ask ``did we retrieve any valid view of the same place?''
+
 \subsection{\file{matching/matching.py}}
 \textbf{What it does.} This file converts similarity scores into binary match decisions.
 
@@ -323,6 +372,32 @@ S = np.matmul(db_D_holistic, q_D_holistic.transpose())
 \end{lstlisting}
 
 \textbf{How it works.} The structure is intentionally similar to \file{demo.py}. The biggest difference is the campus loader and the saved campus-specific output files.
+
+\subsection{\file{test\_campus\_dataset\_place\_level.py}}
+\textbf{What it does.} This file reruns the campus benchmark on the relabeled place-level dataset.
+
+\textbf{Why it matters.} It shows that the descriptor pipeline, matching code, and metrics code did not need to change. The main change is the meaning of the ground-truth matrix.
+
+\begin{lstlisting}[style=repo, language=Python, caption={Place-level evaluation keeps the old benchmark stack}]
+dataset = CampusPlaceLevelDataset(destination=args.dataset_dir)
+imgs_db, imgs_q, GThard, GTsoft = dataset.load()
+
+M1 = matching.best_match_per_query(S)
+M2 = matching.thresholding(S, "auto")
+
+P, R = createPR(S, GThard, GTsoft, matching="multi", n_thresh=100)
+maxR = recallAt100precision(S, GThard, GTsoft, matching="multi", n_thresh=100)
+RatK[K] = recallAtK(S, GThard, K=K)
+\end{lstlisting}
+
+\textbf{How it works.}
+\begin{itemize}[leftmargin=*]
+  \item Descriptor extraction is unchanged from \file{test\_campus\_dataset.py}.
+  \item The similarity matrix $S$ is computed the same way.
+  \item Matching is still done by \file{matching/matching.py}.
+  \item Evaluation is still done by \file{evaluation/metrics.py}.
+  \item The only major semantic change is that any valid day image for the same place now counts as positive.
+\end{itemize}
 
 \subsection{\file{live\_vpr\_test.py}}
 \textbf{What it does.} This is the top-level CLI for the live pipeline.
@@ -670,6 +745,31 @@ The important nuance is that $R@K$ ignores no-match queries by design (same as \
   \item Evaluation checks how good those decisions are across operating points.
 \end{itemize}
 
+\subsection{Campus-specific interpretation: strict vs place-level}
+For the campus dataset, the important new architectural distinction is not in the matcher or metric function. It is in how \texttt{GThard} is constructed.
+
+\begin{longtable}{p{0.26\linewidth} p{0.31\linewidth} p{0.31\linewidth}}
+\toprule
+\textbf{Aspect} & \textbf{Strict campus path} & \textbf{Place-level campus path} \\
+\midrule
+Loader & \file{datasets/load\_dataset.py} & \file{datasets/load\_dataset\_place\_level.py} \\
+Entry script & \file{test\_campus\_dataset.py} & \file{test\_campus\_dataset\_place\_level.py} \\
+Ground-truth meaning & one exact paired day image & any valid day image from the same place \\
+No-match handling & many \texttt{-npm} / \texttt{PXL\_*} queries stay unmatched & some former \texttt{-npm} queries are rematched after manual review \\
+Matching code & \file{matching/matching.py} & \file{matching/matching.py} \\
+Metric code & \file{evaluation/metrics.py} & \file{evaluation/metrics.py} \\
+\bottomrule
+\end{longtable}
+
+\paragraph{Tiny example.}
+Suppose a night query shows the atrium from a slightly shifted viewpoint:
+\begin{itemize}[leftmargin=*]
+  \item in the strict dataset, only one exact daytime file may count as correct;
+  \item in the place-level dataset, several daytime images can count as correct if they all belong to the same relabeled place.
+\end{itemize}
+
+That is why the same top-1 retrieval can score as false in the strict protocol but true in the place-level protocol.
+
 \section{Worked Example B: Live flow and database flow (contrived)}
 This dry run explains how map creation and frame-by-frame localization interact in practice.
 
@@ -784,6 +884,7 @@ If you want to change something, start here:
 \textbf{Goal} & \textbf{File to edit first} \\
 \midrule
 Add a new dataset & \file{datasets/load\_dataset.py} \\
+Add a new place-level/rematched dataset & \file{datasets/load\_dataset\_place\_level.py} and its CSV files \\
 Add a new descriptor & \file{feature\_extraction/} and \file{live\_vpr/extractors.py} \\
 Change benchmark metrics & \file{evaluation/metrics.py} \\
 Change match selection & \file{matching/matching.py} \\

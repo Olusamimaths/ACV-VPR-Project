@@ -49,10 +49,10 @@
 \begin{frame}{Problem}
   \begin{columns}[T,totalwidth=\textwidth]
     \column{0.52\textwidth}
-      \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{../custom_dataset/day_images/image010.jpg}
+      \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{../../custom_dataset/day_images/image010.jpg}
 
     \column{0.46\textwidth}
-      \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{../custom_dataset/night_images/image010.jpg}
+      \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{../../custom_dataset/night_images/image010.jpg}
   \end{columns}
 
   \vspace{0.5em}
@@ -94,9 +94,9 @@
 
   \vspace{1em}
   \begin{center}
-    \includegraphics[width=0.35\linewidth,height=0.38\textheight,keepaspectratio]{../custom_dataset/day_images/image001.jpg}
+    \includegraphics[width=0.35\linewidth,height=0.38\textheight,keepaspectratio]{../../custom_dataset/day_images/image001.jpg}
     \hspace{0.03\linewidth}
-    \includegraphics[width=0.35\linewidth,height=0.38\textheight,keepaspectratio]{../custom_dataset/night_images/image001.jpg}
+    \includegraphics[width=0.35\linewidth,height=0.38\textheight,keepaspectratio]{../../custom_dataset/night_images/image001.jpg}
   \end{center}
 \end{frame}
 
@@ -162,9 +162,9 @@
 
       \vspace{0.6em}
       \centering
-      \includegraphics[width=0.44\linewidth,height=0.28\textheight,keepaspectratio]{../custom_dataset/day_images/image001.jpg}
+      \includegraphics[width=0.44\linewidth,height=0.28\textheight,keepaspectratio]{../../custom_dataset/day_images/image001.jpg}
       \hfill
-      \includegraphics[width=0.44\linewidth,height=0.28\textheight,keepaspectratio]{../custom_dataset/night_images/image001.jpg}
+      \includegraphics[width=0.44\linewidth,height=0.28\textheight,keepaspectratio]{../../custom_dataset/night_images/image001.jpg}
   \end{columns}
 \end{frame}
 
@@ -268,7 +268,7 @@
 \begin{frame}{Campus Transfer Results}
   \begin{columns}[T,totalwidth=\textwidth]
     \column{0.58\textwidth}
-      \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{../output_images/campus_pr_curve.png}
+      \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{../../output_images/campus_pr_curve.png}
 
     \column{0.38\textwidth}
       \begin{block}{Campus / CosPlace}
@@ -294,16 +294,50 @@
   \end{columns}
 \end{frame}
 
+\begin{frame}{What We Learned From Relabeling}
+  \begin{columns}[T,totalwidth=\textwidth]
+    \column{0.52\textwidth}
+      \includegraphics[width=\linewidth,height=0.63\textheight,keepaspectratio]{../../custom_dataset_place_level/place_flow_visual.jpg}
+
+      \vspace{0.4em}
+      \centering \pill{softgreen}{10 place IDs}
+
+    \column{0.44\textwidth}
+      \begin{block}{Main finding}
+        \centering
+        \Large Original campus setup
+
+        \vspace{0.2em}
+        \Large was too strict for
+
+        \vspace{0.2em}
+        \Large multi-view place recognition
+      \end{block}
+
+      \vspace{0.5em}
+      \begin{block}{After place-level relabeling}
+        \centering
+        \large CosPlace: R@1 \ 0.727 $\rightarrow$ 0.969
+
+        \vspace{0.2em}
+        \large EigenPlaces: AUC \ 0.443 $\rightarrow$ 0.663
+
+        \vspace{0.2em}
+        \large NetVLAD: R@1 \ 0.394 $\rightarrow$ 0.891
+      \end{block}
+  \end{columns}
+\end{frame}
+
 \begin{frame}{Qualitative Result}
   \begin{columns}[T,totalwidth=\textwidth]
     \column{0.49\textwidth}
-      \includegraphics[width=\linewidth,height=0.68\textheight,keepaspectratio]{../output_images/campus_similarity_matrix.png}
+      \includegraphics[width=\linewidth,height=0.68\textheight,keepaspectratio]{../../output_images/campus_similarity_matrix.png}
 
       \vspace{0.4em}
       \centering \pill{softblue}{Similarity structure}
 
     \column{0.49\textwidth}
-      \includegraphics[width=\linewidth,height=0.68\textheight,keepaspectratio]{../output_images/campus_matching_results.png}
+      \includegraphics[width=\linewidth,height=0.68\textheight,keepaspectratio]{../../output_images/campus_matching_results.png}
 
       \vspace{0.4em}
       \centering \pill{softorange}{Correct vs wrong matches}
@@ -313,10 +347,10 @@
 \begin{frame}{What We Built Beyond Offline Evaluation}
   \begin{columns}[T,totalwidth=\textwidth]
     \column{0.48\textwidth}
-      \includegraphics[width=\linewidth,height=0.34\textheight,keepaspectratio]{../custom_dataset/day_images/image010.jpg}
+      \includegraphics[width=\linewidth,height=0.34\textheight,keepaspectratio]{../../custom_dataset/day_images/image010.jpg}
 
       \vspace{0.6em}
-      \includegraphics[width=\linewidth,height=0.34\textheight,keepaspectratio]{../custom_dataset/night_images/image010.jpg}
+      \includegraphics[width=\linewidth,height=0.34\textheight,keepaspectratio]{../../custom_dataset/night_images/image010.jpg}
 
     \column{0.48\textwidth}
       \begin{block}{Current practical pipeline}
@@ -353,7 +387,7 @@
     \column{0.32\textwidth}
       \begin{block}{2}
         \centering
-        \Large Campus transfer is promising but harder
+        \Large Campus transfer improved after place-level relabeling
       \end{block}
 
     \column{0.32\textwidth}
@@ -365,7 +399,7 @@
 
   \vspace{1em}
   \centering
-  \pill{softblue}{Next: CLAHE + sequence matching} \hspace{0.8em}
+  \pill{softblue}{Key takeaway: strict labels under-credited multi-view matches} \hspace{0.8em}
   \pill{softgreen}{Search at larger map scale} \hspace{0.8em}
   \pill{softorange}{Robust live demo}
 \end{frame}

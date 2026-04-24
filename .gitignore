@@ -1,6 +1,6 @@
 # Ignore datasets
 images/
-custom_dataset/
+custom_dataset*/
 artifacts/
 TurboPi_Backup/
 
