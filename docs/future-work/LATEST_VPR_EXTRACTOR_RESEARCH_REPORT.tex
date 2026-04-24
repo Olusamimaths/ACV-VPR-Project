@@ -40,14 +40,16 @@ This report surveys recent \textbf{primary-source} VPR methods that are realisti
   \item minimal engineering risk for near-term experiments.
 \end{itemize}
 
-\textbf{Recommended top 3 for this project:}
+\textbf{Recommended 5 extractors to try in this project:}
 \begin{enumerate}[leftmargin=*]
   \item \textbf{SALAD (CVPR 2024)}: best first experiment overall. It is a strong single-stage global descriptor, has official Torch Hub support, and fits the current descriptor-based pipeline directly.
-  \item \textbf{BoQ / Bag-of-Queries (CVPR 2024)}: strongest raw benchmark contender among the surveyed drop-in descriptor methods, but with much larger descriptor sizes and therefore more expensive search.
+  \item \textbf{BoQ / Bag-of-Queries (CVPR 2024)}: strongest benchmark-oriented follow-up among the direct drop-in descriptor methods, but with much larger descriptor sizes and therefore more expensive search.
+  \item \textbf{AnyLoc-VLAD-DINOv2 (RA-L 2023 / ICRA 2024)}: best general-purpose, no-training baseline and still one of the most valuable transfer-learning experiments for a new campus.
+  \item \textbf{MixVPR (WACV 2023)}: best lightweight and efficient descriptor candidate among the methods surfaced during consolidation, with compact released checkpoints and easy conceptual fit.
   \item \textbf{VPRTempo (ICRA 2024)}: best robotics-oriented efficiency option. It is not the most direct drop-in replacement for the current pipeline, but it is highly relevant if real-time CPU deployment becomes the priority.
 \end{enumerate}
 
-\textbf{Important nuance:} if you want a purely \emph{general-purpose, no-training} baseline, \textbf{AnyLoc-VLAD-DINOv2} is still one of the most useful methods to try. It is older than the 2024--2025 methods above, but it remains a very strong universal baseline and may be easier to test than VPRTempo.
+\textbf{Important nuance:} \textbf{SelaVPR++ (T-PAMI 2025)} is also a serious candidate and deserves a dedicated section in this report. It is not in the immediate top-5 trial order only because it introduces a more ambitious \textbf{two-stage hashing + reranking pipeline}, which is a larger engineering commitment than the five methods above.
 
 \section*{How the Ranking Was Chosen}
 The ranking is based on the following project-specific criteria:
@@ -69,6 +71,28 @@ Your current implementation is organized around \textbf{global descriptors}. In 
 \end{itemize}
 
 This means some new methods are \textbf{easy drop-ins} and some are \textbf{better treated as separate pipelines}. That distinction is central to the recommendations below.
+
+\section*{Comparison with the Gemini List}
+The Gemini list and this report agree on three methods:
+\begin{itemize}[leftmargin=*]
+  \item \textbf{SALAD}: both lists identify it as a top-tier modern descriptor.
+  \item \textbf{VPRTempo}: both lists identify it as a highly relevant robotics method.
+  \item \textbf{AnyLoc}: both lists recognize it as a strong zero-shot baseline.
+\end{itemize}
+
+The main differences are:
+\begin{itemize}[leftmargin=*]
+  \item \textbf{BoQ} did not appear in the Gemini list, but it should be included because it is one of the strongest recent \emph{drop-in global descriptor} methods with official code and pretrained models.
+  \item \textbf{MixVPR} from the Gemini list remains a good recommendation, but I rank it below SALAD, BoQ, and AnyLoc because it is older and less competitive on modern foundation-model-driven VPR than the best 2024 methods.
+  \item \textbf{SelaVPR++} from the Gemini list is promising and newer, but I treat it as a \emph{high-upside, higher-effort} option rather than an immediate first-round experiment.
+\end{itemize}
+
+So the consolidated position is:
+\begin{itemize}[leftmargin=*]
+  \item keep \textbf{SALAD}, \textbf{AnyLoc}, \textbf{MixVPR}, and \textbf{VPRTempo},
+  \item add \textbf{BoQ},
+  \item keep \textbf{SelaVPR++} as a strong notable mention with real follow-up potential.
+\end{itemize}
 
 \section*{Ranked Recommendations}
 
@@ -123,10 +147,47 @@ This means some new methods are \textbf{easy drop-ins} and some are \textbf{bett
 
 \textbf{Bottom line.} \textbf{BoQ} is probably the best ``push for maximum retrieval quality'' experiment after SALAD, but it is heavier on the retrieval side.
 
-\subsection*{3. VPRTempo (ICRA 2024)}
+\subsection*{3. AnyLoc-VLAD-DINOv2 (RA-L 2023 / ICRA 2024)}
+\textbf{What it is.} AnyLoc is a general-purpose VPR method built around foundation-model features and VLAD aggregation. The project page positions it as a universal VPR system that works across structured and unstructured environments without retraining or fine-tuning, and the repo explicitly presents \texttt{AnyLoc-VLAD-DINOv2} as the strongest configuration.\footnote{\url{https://anyloc.github.io/}}\footnote{\url{https://github.com/AnyLoc/AnyLoc}}
+
+\textbf{Why it ranks third.}
+\begin{itemize}[leftmargin=*]
+  \item It is the strongest \textbf{zero-shot baseline} in the consolidated list.
+  \item It is especially valuable for your project because your campus data differs from standard curated benchmarks, so transferability matters.
+  \item It answers a useful scientific question: how far can \textbf{general foundation features} go before we need VPR-specific training?
+\end{itemize}
+
+\textbf{Why it is not ranked higher.}
+\begin{itemize}[leftmargin=*]
+  \item It is older than SALAD and BoQ.
+  \item The implementation path is heavier than simply loading a single ready-made hub model.
+  \item Compared with SALAD, it is less obviously optimized for \textbf{live map retrieval under limited latency}.
+\end{itemize}
+
+\textbf{Bottom line.} If you want the best \textbf{general-purpose no-training comparator}, choose \textbf{AnyLoc}. It is one of the most informative baselines you can add.
+
+\subsection*{4. MixVPR (WACV 2023)}
+\textbf{What it is.} MixVPR is an all-MLP feature aggregation method that mixes global feature maps instead of relying on VLAD- or attention-style aggregation. The official repo describes it as a practical, latency-aware VPR technique and releases pretrained checkpoints at \textbf{128D}, \textbf{512D}, and \textbf{4096D} output sizes.\footnote{\url{https://github.com/amaralibey/MixVPR}}
+
+\textbf{Why it ranks fourth.}
+\begin{itemize}[leftmargin=*]
+  \item It is likely the \textbf{easiest efficient baseline} to add after SALAD and BoQ.
+  \item It offers compact descriptor sizes that are directly useful for your live map setting.
+  \item It is conceptually simple and pairs well with the search abstractions you already added.
+\end{itemize}
+
+\textbf{Why it is not ranked higher.}
+\begin{itemize}[leftmargin=*]
+  \item It predates the strongest 2024 foundation-model-driven methods.
+  \item On pure ``latest VPR research'' grounds, SALAD, BoQ, and SelaVPR++ are more modern and more ambitious.
+\end{itemize}
+
+\textbf{Bottom line.} \textbf{MixVPR} is a very good \textbf{practical engineering trial} even if it is not the most novel method in the list.
+
+\subsection*{5. VPRTempo (ICRA 2024)}
 \textbf{What it is.} VPRTempo is a temporally encoded \textbf{spiking neural network} for visual place recognition. The official project page describes it as an SNN designed for VPR with rapid training and fast query times for compute-limited robotic systems.\footnote{\url{https://vprtempo.github.io/}}
 
-\textbf{Why it makes the top 3.}
+\textbf{Why it makes the top 5.}
 \begin{itemize}[leftmargin=*]
   \item It is the most clearly \textbf{robotics-first} method in this short list.
   \item The official page reports \textbf{over 50 Hz CPU inference} and support for datasets with \textbf{more than 27k unique places}.\footnote{\url{https://vprtempo.github.io/}}
@@ -150,67 +211,87 @@ This means some new methods are \textbf{easy drop-ins} and some are \textbf{bett
 
 \section*{Other Techniques Worth Watching}
 
-\subsection*{AnyLoc-VLAD-DINOv2 (RA-L 2023 / ICRA 2024)}
-AnyLoc is still one of the strongest \textbf{general-purpose} VPR methods. The project page positions it as a universal VPR system that works across structured and unstructured environments without retraining or fine-tuning, and its repo explicitly presents \texttt{AnyLoc-VLAD-DINOv2} as the SOTA configuration.\footnote{\url{https://anyloc.github.io/}}\footnote{\url{https://github.com/AnyLoc/AnyLoc}}
+\subsection*{SelaVPR++ (T-PAMI 2025)}
+SelaVPR++ is one of the strongest methods surfaced by the Gemini list and absolutely deserves attention. The official repository presents it as a \textbf{T-PAMI 2025} method with Torch Hub support, optional hashing and reranking, and even interchangeable aggregators such as \texttt{gem}, \texttt{boq}, and \texttt{salad}.\footnote{\url{https://github.com/Lu-Feng/SelaVPRplusplus}}
 
-\textbf{Why it matters here.} If you want an immediate experiment that uses \textbf{general foundation features} with \textbf{no VPR-specific training}, AnyLoc is arguably the safest research baseline to add.
+\textbf{Why it matters here.}
+\begin{itemize}[leftmargin=*]
+  \item It is a very serious \textbf{efficiency-aware large-scale VPR} method.
+  \item It explicitly supports \textbf{binary hashing for first-stage retrieval} and \textbf{floating-point reranking}, which aligns with your recent interest in scalable search.
+  \item It is more modern than MixVPR and more retrieval-efficient than raw BoQ-style high-dimensional descriptors.
+\end{itemize}
 
-\textbf{Why it is not in the main top 3.} It is older than the 2024 methods, and the engineering stack is somewhat heavier than a single ready-made hub model. But as a \textbf{universal baseline}, it remains very valuable.
+\textbf{Why it is a notable mention instead of a first-wave trial.}
+\begin{itemize}[leftmargin=*]
+  \item To exploit its main strengths, you really want a \textbf{two-stage retrieval pipeline}, not just a plain cosine similarity drop-in.
+  \item It is therefore better treated as a \textbf{follow-on architecture experiment} after you have tested the easier descriptor-style additions.
+\end{itemize}
 
 \subsection*{EffoVPR (ICLR 2025)}
 EffoVPR is one of the most interesting recent papers because it argues that self-attention features from foundation models can serve as a powerful zero-shot reranker, and that internal ViT layers can produce \textbf{compact global features down to 128D}. The paper explicitly claims robustness under \textbf{occlusion, day-night transitions, and seasonal variation}.\footnote{\url{https://arxiv.org/abs/2405.18065}}
 
 \textbf{Why it matters here.} It directly targets several of your pain points: compact features, strong generalization, and hard appearance changes.
 
-\textbf{Why it is not in the main top 3.} Based on the primary sources reviewed here, it looks more like an excellent \textbf{research watchlist item} than the first method to integrate this week.
+\textbf{Why it is not in the recommended 5.} Based on the primary sources reviewed here, it looks more like an excellent \textbf{research watchlist item} than the first method to integrate this week.
 
 \subsection*{SuperVLAD (NeurIPS 2024)}
 SuperVLAD is presented as a \textbf{compact and robust} VPR descriptor built on DINOv2, with optional cross-image encoding.\footnote{\url{https://github.com/lu-feng/SuperVLAD}}
 
 \textbf{Why it matters here.} Its positioning is attractive because compactness and robustness are exactly the tradeoffs you care about.
 
-\textbf{Why it is not in the main top 3.} Compared with SALAD and BoQ, it looks a bit less battle-tested for immediate drop-in use, and the cross-image encoder adds complexity.
+\textbf{Why it is not in the recommended 5.} Compared with SALAD and BoQ, it looks a bit less battle-tested for immediate drop-in use, and the cross-image encoder adds complexity.
 
 \subsection*{CricaVPR (CVPR 2024)}
 CricaVPR is a DINOv2-based representation-learning method for VPR with official code and pretrained weights.\footnote{\url{https://github.com/Lu-Feng/CricaVPR}}
 
 \textbf{Why it matters here.} It is a solid modern supervised VPR option.
 
-\textbf{Why it is not in the main top 3.} It is more training-oriented than SALAD and less clearly deployment-oriented than VPRTempo.
+\textbf{Why it is not in the recommended 5.} It is more training-oriented than SALAD and less clearly deployment-oriented than VPRTempo.
 
 \subsection*{Pair-VPR (RA-L 2025)}
 Pair-VPR is a \textbf{two-stage} ViT-based VPR system that first retrieves candidates with a global descriptor and then reranks them.\footnote{\url{https://github.com/csiro-robotics/Pair-VPR}}
 
 \textbf{Why it matters here.} It is one of the more recent high-performance directions and aligns with your emerging interest in better re-ranking.
 
-\textbf{Why it is not in the main top 3.} The official repo is explicit that inference is GPU-heavy and training is expensive, making it much less practical for your current live robot timeline.\footnote{\url{https://github.com/csiro-robotics/Pair-VPR}}
+\textbf{Why it is not in the recommended 5.} The official repo is explicit that inference is GPU-heavy and training is expensive, making it much less practical for your current live robot timeline.\footnote{\url{https://github.com/csiro-robotics/Pair-VPR}}
 
 \section*{Recommended Trial Order}
 \textbf{If the goal is to improve the current codebase with minimal disruption:}
 \begin{enumerate}[leftmargin=*]
   \item \textbf{SALAD}
+  \item \textbf{MixVPR}
   \item \textbf{BoQ}
   \item \textbf{AnyLoc-VLAD-DINOv2}
+  \item \textbf{VPRTempo}
 \end{enumerate}
 
 \textbf{If the goal is to improve the live robot story even at the cost of a separate code path:}
 \begin{enumerate}[leftmargin=*]
   \item \textbf{SALAD}
   \item \textbf{VPRTempo}
+  \item \textbf{MixVPR}
   \item \textbf{BoQ}
+  \item \textbf{AnyLoc-VLAD-DINOv2}
+\end{enumerate}
+
+\textbf{If the goal is to attempt the most ambitious scalable-search branch after the first wave:}
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{SelaVPR++}
+  \item \textbf{EffoVPR}
+  \item \textbf{SuperVLAD}
 \end{enumerate}
 
 \section*{Concrete Recommendations for This Repo}
 \subsection*{Phase 1: easiest drop-in experiments}
 \begin{itemize}[leftmargin=*]
-  \item Add \textbf{SALAD} and \textbf{BoQ} as new extractor wrappers under \texttt{feature\_extraction/} and register them in \texttt{live\_vpr/extractors.py}.
+  \item Add \textbf{SALAD}, \textbf{MixVPR}, and \textbf{BoQ} as new extractor wrappers under \texttt{feature\_extraction/} and register them in \texttt{live\_vpr/extractors.py}.
   \item Evaluate them first with:
   \begin{itemize}[leftmargin=*]
     \item \texttt{test\_campus\_dataset\_place\_level.py}
     \item \texttt{test\_campus\_dataset.py}
     \item your live map / live localization path
   \end{itemize}
-  \item Because BoQ descriptors are large, prefer the new ANN backends in \texttt{live\_vpr/search.py} when testing live performance.
+  \item Because \textbf{BoQ} descriptors are large, prefer the new ANN backends in \texttt{live\_vpr/search.py} when testing live performance.
 \end{itemize}
 
 \subsection*{Phase 2: general-purpose foundation-model baseline}
@@ -226,24 +307,42 @@ Pair-VPR is a \textbf{two-stage} ViT-based VPR system that first retrieves candi
   \item A better framing is: \textbf{current pipeline = descriptor retrieval}, \textbf{VPRTempo branch = direct place recognizer for resource-constrained deployment}.
 \end{itemize}
 
+\subsection*{Phase 4: scalable two-stage retrieval branch}
+\begin{itemize}[leftmargin=*]
+  \item Explore \textbf{SelaVPR++} if you want to extend the architecture toward binary-first retrieval plus floating-point reranking.
+  \item This is the most natural follow-up if your map sizes grow enough that \textbf{ANN alone is not the whole story}.
+\end{itemize}
+
 \section*{Final Recommendation}
-If your goal is \textbf{one strong next method to try in this repo}, choose \textbf{SALAD}. If you want the strongest second benchmark-oriented contender, add \textbf{BoQ}. If you want the most interesting robotics-specific branch for future deployment, investigate \textbf{VPRTempo}.
+If your goal is \textbf{one strong next method to try in this repo}, choose \textbf{SALAD}. If you want the most balanced five-method trial plan, use this order:
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{SALAD}
+  \item \textbf{BoQ}
+  \item \textbf{AnyLoc-VLAD-DINOv2}
+  \item \textbf{MixVPR}
+  \item \textbf{VPRTempo}
+\end{enumerate}
 
 In short:
 \begin{itemize}[leftmargin=*]
   \item \textbf{Best first practical upgrade: SALAD}
   \item \textbf{Best high-performance follow-up: BoQ}
+  \item \textbf{Best no-training transfer baseline: AnyLoc}
+  \item \textbf{Best compact practical baseline: MixVPR}
   \item \textbf{Best edge/robotics research direction: VPRTempo}
+  \item \textbf{Best ambitious scalable-search follow-on: SelaVPR++}
 \end{itemize}
 
 \section*{Primary Sources Used}
 \begin{enumerate}[leftmargin=*]
   \item SALAD official repository: \url{https://github.com/serizba/salad}
   \item BoQ official repository: \url{https://github.com/amaralibey/Bag-of-Queries}
+  \item MixVPR official repository: \url{https://github.com/amaralibey/MixVPR}
   \item VPRTempo official project page: \url{https://vprtempo.github.io/}
   \item VPRTempo official package page: \url{https://pypi.org/project/vprtempo/}
   \item AnyLoc official project page: \url{https://anyloc.github.io/}
   \item AnyLoc official repository: \url{https://github.com/AnyLoc/AnyLoc}
+  \item SelaVPR++ official repository: \url{https://github.com/Lu-Feng/SelaVPRplusplus}
   \item EffoVPR arXiv page: \url{https://arxiv.org/abs/2405.18065}
   \item CricaVPR official repository: \url{https://github.com/Lu-Feng/CricaVPR}
   \item SuperVLAD official repository: \url{https://github.com/lu-feng/SuperVLAD}
