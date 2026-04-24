@@ -1,0 +1,253 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{parskip}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  urlcolor=blue!50!black,
+  citecolor=blue!50!black
+}
+
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+\title{\textbf{Research Report: Recent Feature Extractors and Retrieval Pipelines for VPR}\\[4pt]
+Recommendations for the CMU-Africa Night-Time Campus VPR Project}
+\author{Prepared for the current VPR tutorial codebase}
+\date{April 24, 2026}
+
+\begin{document}
+\maketitle
+
+\section*{Executive Summary}
+This report surveys recent \textbf{primary-source} VPR methods that are realistic candidates for this project. The goal is not to name the absolute best paper in isolation, but to identify the techniques that best match this codebase and project constraints:
+\begin{itemize}[leftmargin=*]
+  \item night-time and viewpoint variation,
+  \item campus-scale maps,
+  \item live localization and robot deployment,
+  \item minimal engineering risk for near-term experiments.
+\end{itemize}
+
+\textbf{Recommended top 3 for this project:}
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{SALAD (CVPR 2024)}: best first experiment overall. It is a strong single-stage global descriptor, has official Torch Hub support, and fits the current descriptor-based pipeline directly.
+  \item \textbf{BoQ / Bag-of-Queries (CVPR 2024)}: strongest raw benchmark contender among the surveyed drop-in descriptor methods, but with much larger descriptor sizes and therefore more expensive search.
+  \item \textbf{VPRTempo (ICRA 2024)}: best robotics-oriented efficiency option. It is not the most direct drop-in replacement for the current pipeline, but it is highly relevant if real-time CPU deployment becomes the priority.
+\end{enumerate}
+
+\textbf{Important nuance:} if you want a purely \emph{general-purpose, no-training} baseline, \textbf{AnyLoc-VLAD-DINOv2} is still one of the most useful methods to try. It is older than the 2024--2025 methods above, but it remains a very strong universal baseline and may be easier to test than VPRTempo.
+
+\section*{How the Ranking Was Chosen}
+The ranking is based on the following project-specific criteria:
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Performance relevance}: robustness to day-night, seasonal, or viewpoint changes.
+  \item \textbf{Integration fit}: whether the method naturally plugs into the current pipeline, which expects a global descriptor from \texttt{compute\_features()} and then runs similarity search.
+  \item \textbf{Runtime fit}: whether the method can support a live or robot-facing demo.
+  \item \textbf{Code availability}: preference for official code or official pretrained weights.
+  \item \textbf{Recency}: emphasis on 2024--2025 methods, while keeping one older but still highly practical baseline where justified.
+\end{itemize}
+
+\section*{Why the Current Codebase Matters}
+Your current implementation is organized around \textbf{global descriptors}. In particular:
+\begin{itemize}[leftmargin=*]
+  \item \texttt{live\_vpr/extractors.py} defines the supported descriptors and expects each extractor to return a 2D descriptor matrix.
+  \item \texttt{live\_vpr/offline.py} builds map descriptors from reference images.
+  \item \texttt{live\_vpr/online.py} compares a live query descriptor against saved map descriptors.
+  \item \texttt{live\_vpr/search.py} now supports multiple search backends, so larger descriptors are feasible, but they still increase memory and latency.
+\end{itemize}
+
+This means some new methods are \textbf{easy drop-ins} and some are \textbf{better treated as separate pipelines}. That distinction is central to the recommendations below.
+
+\section*{Ranked Recommendations}
+
+\subsection*{1. SALAD (Optimal Transport Aggregation for Visual Place Recognition, CVPR 2024)}
+\textbf{What it is.} SALAD combines a fine-tuned DINOv2 encoder with an optimal-transport-inspired aggregation layer. The official repository describes two main ideas: using a fine-tuned DINOv2 encoder for richer features, and an aggregation method that extends VLAD with feature-to-cluster and cluster-to-feature assignments plus a dustbin for uninformative features.\footnote{\url{https://github.com/serizba/salad}}
+
+\textbf{Why it ranks first for this project.}
+\begin{itemize}[leftmargin=*]
+  \item It is a \textbf{single-stage global descriptor} method, so it matches your current pipeline naturally.
+  \item The official repo provides \textbf{Torch Hub} loading, which reduces integration friction.\footnote{\url{https://github.com/serizba/salad}}
+  \item The repo also exposes \textbf{multiple descriptor sizes} such as \texttt{512+32}, \texttt{2048+64}, and \texttt{8192+256}, which is useful because you care about both accuracy and live-search cost.\footnote{\url{https://github.com/serizba/salad}}
+  \item It is one of the strongest recent \textbf{descriptor-style} methods, not just a reranker or a heavy two-stage system.
+\end{itemize}
+
+\textbf{Why it is especially relevant to you.}
+\begin{itemize}[leftmargin=*]
+  \item Night-time robustness is likely to benefit from DINOv2-level features more than older CNN descriptors.
+  \item The compact SALAD variants are attractive for \textbf{campus maps plus live search}.
+  \item It can be tested in both \texttt{test\_campus\_dataset\_place\_level.py} and the live pipeline with minimal architectural changes.
+\end{itemize}
+
+\textbf{Main caveats.}
+\begin{itemize}[leftmargin=*]
+  \item DINOv2-based models are still heavier than your current CosPlace/EigenPlaces baselines.
+  \item The official repo was tested with PyTorch 2.1, CUDA 12.1, and xFormers, so environment friction is possible.\footnote{\url{https://github.com/serizba/salad}}
+\end{itemize}
+
+\textbf{Bottom line.} If you only try \emph{one} new method first, try \textbf{SALAD}. It offers the best balance of modern performance, clean integration, and realistic deployment potential.
+
+\subsection*{2. BoQ / Bag-of-Queries (CVPR 2024)}
+\textbf{What it is.} BoQ aggregates local features using a learned bag of queries and cross-attention, then projects the outputs into a global descriptor.\footnote{\url{https://github.com/amaralibey/Bag-of-Queries}}
+
+\textbf{Why it ranks second.}
+\begin{itemize}[leftmargin=*]
+  \item The official repo provides pretrained \textbf{ResNet50+BoQ} and \textbf{DINOv2+BoQ} models via \textbf{Torch Hub}.\footnote{\url{https://github.com/amaralibey/Bag-of-Queries}}
+  \item The released benchmark table is very strong, including \textbf{SVOX-night R@1 = 97.7} for the DINOv2-backed model.\footnote{\url{https://github.com/amaralibey/Bag-of-Queries}}
+  \item Like SALAD, it produces a \textbf{global descriptor}, so it fits your current architecture directly.
+\end{itemize}
+
+\textbf{Why it is not ranked first.}
+\begin{itemize}[leftmargin=*]
+  \item The official DINOv2 model uses a \textbf{12288-dimensional} descriptor, and the ResNet50 model uses \textbf{16384 dimensions}.\footnote{\url{https://github.com/amaralibey/Bag-of-Queries}}
+  \item Those descriptor sizes will make search, storage, and reranking more expensive in your live system.
+  \item For a small benchmark this is fine, but for larger maps it creates more engineering pressure than SALAD.
+\end{itemize}
+
+\textbf{Why it may still be worth trying.}
+\begin{itemize}[leftmargin=*]
+  \item If your main goal shifts toward \textbf{best recall on benchmarks}, BoQ is arguably the strongest direct competitor to SALAD.
+  \item Because you already added configurable ANN search backends, your codebase is better prepared for a high-dimensional descriptor than it was before.
+\end{itemize}
+
+\textbf{Bottom line.} \textbf{BoQ} is probably the best ``push for maximum retrieval quality'' experiment after SALAD, but it is heavier on the retrieval side.
+
+\subsection*{3. VPRTempo (ICRA 2024)}
+\textbf{What it is.} VPRTempo is a temporally encoded \textbf{spiking neural network} for visual place recognition. The official project page describes it as an SNN designed for VPR with rapid training and fast query times for compute-limited robotic systems.\footnote{\url{https://vprtempo.github.io/}}
+
+\textbf{Why it makes the top 3.}
+\begin{itemize}[leftmargin=*]
+  \item It is the most clearly \textbf{robotics-first} method in this short list.
+  \item The official page reports \textbf{over 50 Hz CPU inference} and support for datasets with \textbf{more than 27k unique places}.\footnote{\url{https://vprtempo.github.io/}}
+  \item The official package page exposes both a base model and an \textbf{quantized int8} variant for lighter deployment.\footnote{\url{https://pypi.org/project/vprtempo/}}
+\end{itemize}
+
+\textbf{Why it is not ranked higher.}
+\begin{itemize}[leftmargin=*]
+  \item \textbf{It is not a clean drop-in global descriptor extractor} in the same way SALAD or BoQ are.
+  \item The method is place-centric and training-oriented: each output neuron is meant to respond to a place, so it fits better as a \textbf{map- or dataset-specific recognizer} than as a universal descriptor you can compare with cosine similarity.
+  \item In other words, VPRTempo is highly relevant, but it should probably be treated as a \textbf{parallel experimental branch}, not just ``another descriptor'' in \texttt{live\_vpr/extractors.py}.
+\end{itemize}
+
+\textbf{Where it fits best in your project.}
+\begin{itemize}[leftmargin=*]
+  \item A \textbf{TurboPi / live robot} branch where CPU speed matters more than leaderboard recall.
+  \item A \textbf{map-specific} experimental setup where you train or adapt the model for a given traversal or environment.
+\end{itemize}
+
+\textbf{Bottom line.} If your next goal is \textbf{real-time robotics on modest compute}, \textbf{VPRTempo} is one of the most interesting methods to explore. If your next goal is simply to improve your existing descriptor pipeline, start with SALAD or BoQ first.
+
+\section*{Other Techniques Worth Watching}
+
+\subsection*{AnyLoc-VLAD-DINOv2 (RA-L 2023 / ICRA 2024)}
+AnyLoc is still one of the strongest \textbf{general-purpose} VPR methods. The project page positions it as a universal VPR system that works across structured and unstructured environments without retraining or fine-tuning, and its repo explicitly presents \texttt{AnyLoc-VLAD-DINOv2} as the SOTA configuration.\footnote{\url{https://anyloc.github.io/}}\footnote{\url{https://github.com/AnyLoc/AnyLoc}}
+
+\textbf{Why it matters here.} If you want an immediate experiment that uses \textbf{general foundation features} with \textbf{no VPR-specific training}, AnyLoc is arguably the safest research baseline to add.
+
+\textbf{Why it is not in the main top 3.} It is older than the 2024 methods, and the engineering stack is somewhat heavier than a single ready-made hub model. But as a \textbf{universal baseline}, it remains very valuable.
+
+\subsection*{EffoVPR (ICLR 2025)}
+EffoVPR is one of the most interesting recent papers because it argues that self-attention features from foundation models can serve as a powerful zero-shot reranker, and that internal ViT layers can produce \textbf{compact global features down to 128D}. The paper explicitly claims robustness under \textbf{occlusion, day-night transitions, and seasonal variation}.\footnote{\url{https://arxiv.org/abs/2405.18065}}
+
+\textbf{Why it matters here.} It directly targets several of your pain points: compact features, strong generalization, and hard appearance changes.
+
+\textbf{Why it is not in the main top 3.} Based on the primary sources reviewed here, it looks more like an excellent \textbf{research watchlist item} than the first method to integrate this week.
+
+\subsection*{SuperVLAD (NeurIPS 2024)}
+SuperVLAD is presented as a \textbf{compact and robust} VPR descriptor built on DINOv2, with optional cross-image encoding.\footnote{\url{https://github.com/lu-feng/SuperVLAD}}
+
+\textbf{Why it matters here.} Its positioning is attractive because compactness and robustness are exactly the tradeoffs you care about.
+
+\textbf{Why it is not in the main top 3.} Compared with SALAD and BoQ, it looks a bit less battle-tested for immediate drop-in use, and the cross-image encoder adds complexity.
+
+\subsection*{CricaVPR (CVPR 2024)}
+CricaVPR is a DINOv2-based representation-learning method for VPR with official code and pretrained weights.\footnote{\url{https://github.com/Lu-Feng/CricaVPR}}
+
+\textbf{Why it matters here.} It is a solid modern supervised VPR option.
+
+\textbf{Why it is not in the main top 3.} It is more training-oriented than SALAD and less clearly deployment-oriented than VPRTempo.
+
+\subsection*{Pair-VPR (RA-L 2025)}
+Pair-VPR is a \textbf{two-stage} ViT-based VPR system that first retrieves candidates with a global descriptor and then reranks them.\footnote{\url{https://github.com/csiro-robotics/Pair-VPR}}
+
+\textbf{Why it matters here.} It is one of the more recent high-performance directions and aligns with your emerging interest in better re-ranking.
+
+\textbf{Why it is not in the main top 3.} The official repo is explicit that inference is GPU-heavy and training is expensive, making it much less practical for your current live robot timeline.\footnote{\url{https://github.com/csiro-robotics/Pair-VPR}}
+
+\section*{Recommended Trial Order}
+\textbf{If the goal is to improve the current codebase with minimal disruption:}
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{SALAD}
+  \item \textbf{BoQ}
+  \item \textbf{AnyLoc-VLAD-DINOv2}
+\end{enumerate}
+
+\textbf{If the goal is to improve the live robot story even at the cost of a separate code path:}
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{SALAD}
+  \item \textbf{VPRTempo}
+  \item \textbf{BoQ}
+\end{enumerate}
+
+\section*{Concrete Recommendations for This Repo}
+\subsection*{Phase 1: easiest drop-in experiments}
+\begin{itemize}[leftmargin=*]
+  \item Add \textbf{SALAD} and \textbf{BoQ} as new extractor wrappers under \texttt{feature\_extraction/} and register them in \texttt{live\_vpr/extractors.py}.
+  \item Evaluate them first with:
+  \begin{itemize}[leftmargin=*]
+    \item \texttt{test\_campus\_dataset\_place\_level.py}
+    \item \texttt{test\_campus\_dataset.py}
+    \item your live map / live localization path
+  \end{itemize}
+  \item Because BoQ descriptors are large, prefer the new ANN backends in \texttt{live\_vpr/search.py} when testing live performance.
+\end{itemize}
+
+\subsection*{Phase 2: general-purpose foundation-model baseline}
+\begin{itemize}[leftmargin=*]
+  \item Try \textbf{AnyLoc-VLAD-DINOv2} if you want to know how far a no-retraining foundation-feature pipeline can go on your campus.
+  \item This is especially useful if you want a clean comparison against your manually relabeled place-level dataset.
+\end{itemize}
+
+\subsection*{Phase 3: dedicated robotics branch}
+\begin{itemize}[leftmargin=*]
+  \item Explore \textbf{VPRTempo} as a separate experiment, especially for the TurboPi scenario.
+  \item Do not force it into the current cosine-similarity descriptor pipeline unless you first verify that the package exposes a reusable embedding representation in the way your current code expects.
+  \item A better framing is: \textbf{current pipeline = descriptor retrieval}, \textbf{VPRTempo branch = direct place recognizer for resource-constrained deployment}.
+\end{itemize}
+
+\section*{Final Recommendation}
+If your goal is \textbf{one strong next method to try in this repo}, choose \textbf{SALAD}. If you want the strongest second benchmark-oriented contender, add \textbf{BoQ}. If you want the most interesting robotics-specific branch for future deployment, investigate \textbf{VPRTempo}.
+
+In short:
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Best first practical upgrade: SALAD}
+  \item \textbf{Best high-performance follow-up: BoQ}
+  \item \textbf{Best edge/robotics research direction: VPRTempo}
+\end{itemize}
+
+\section*{Primary Sources Used}
+\begin{enumerate}[leftmargin=*]
+  \item SALAD official repository: \url{https://github.com/serizba/salad}
+  \item BoQ official repository: \url{https://github.com/amaralibey/Bag-of-Queries}
+  \item VPRTempo official project page: \url{https://vprtempo.github.io/}
+  \item VPRTempo official package page: \url{https://pypi.org/project/vprtempo/}
+  \item AnyLoc official project page: \url{https://anyloc.github.io/}
+  \item AnyLoc official repository: \url{https://github.com/AnyLoc/AnyLoc}
+  \item EffoVPR arXiv page: \url{https://arxiv.org/abs/2405.18065}
+  \item CricaVPR official repository: \url{https://github.com/Lu-Feng/CricaVPR}
+  \item SuperVLAD official repository: \url{https://github.com/lu-feng/SuperVLAD}
+  \item Pair-VPR official repository: \url{https://github.com/csiro-robotics/Pair-VPR}
+\end{enumerate}
+
+\end{document}
