@@ -118,7 +118,7 @@
   \end{columns}
 \end{frame}
 
-\begin{frame}{4. Methodology and Datasets}
+\begin{frame}[t,shrink=4]{4. Methodology and Datasets}
   \begin{center}
   \begin{tikzpicture}[
     node distance=9mm and 7mm,
@@ -141,21 +141,22 @@
   \begin{columns}[T,totalwidth=\textwidth]
     \column{0.48\textwidth}
       \begin{block}{GardensPoint}
-        \small
+        \footnotesize
         200 day-right reference images and 200 night-right queries. This remains our main benchmark because it directly matches the \textbf{day-to-night} problem.
       \end{block}
     \column{0.48\textwidth}
       \begin{block}{Campus dataset}
-        \small
+        \footnotesize
         50 day images and 64 night queries. In this talk we focus on the \textbf{strict image-level protocol}, which is the more conservative evaluation. All experiments are \textbf{training-free transfer tests} unless explicitly stated otherwise.
       \end{block}
   \end{columns}
 \end{frame}
 
-\begin{frame}{5. Results on GardensPoint}
+\begin{frame}[t,shrink=8]{5. Results on GardensPoint}
   \begin{columns}[T,totalwidth=\textwidth]
     \column{0.52\textwidth}
       \begin{center}
+      \scriptsize
       \begin{tabular}{lcccc}
         \toprule
         \textbf{Descriptor} & \textbf{AUC} & \textbf{R@1} & \textbf{R@5} & \textbf{R@10} \\
@@ -172,51 +173,56 @@
 
       \vspace{0.6em}
       \begin{block}{Takeaway}
-        \small
+        \footnotesize
         The strongest benchmark descriptors are now \textbf{SelaVPR++ and SALAD}. VPRTempo transfers very poorly with the official demo checkpoint.
       \end{block}
 
       \begin{block}{Strict interpretation}
-        \small
+        \footnotesize
         No obvious leakage was found, but the most trustworthy evidence is still \textbf{R@1 / R@5 / R@10}. GardensPoint soft ground truth makes AUC and R@100P more lenient.
       \end{block}
 
     \column{0.44\textwidth}
-      \includegraphics[width=\linewidth,height=0.60\textheight,keepaspectratio]{../../output_images/runs/benchmarks/0010_demo_gardenspoint_salad_20260424_161122/matches_examples.png}
+      \includegraphics[width=\linewidth,height=0.54\textheight,keepaspectratio]{../../output_images/runs/benchmarks/0010_demo_gardenspoint_salad_20260424_161122/matches_examples.png}
   \end{columns}
 \end{frame}
 
-\begin{frame}{6. Why GardensPoint Is Still Our Main Benchmark}
+\begin{frame}[t,shrink=10]{6. Raw-Data EDA: What The Data Looks Like}
   \begin{columns}[T,totalwidth=\textwidth]
     \column{0.54\textwidth}
-      \begin{block}{Why we keep it}
-        \small
-        GardensPoint is still the right primary benchmark for this project because it directly matches the task we care about: \textbf{day-to-night place recognition}. It gives us a clean, controlled test before moving to the noisier campus setting.
-      \end{block}
-
-      \begin{block}{What we learn from it}
-        \small
+      \begin{block}{Day-night shift is dataset-dependent}
+        \footnotesize
+        The EDA shows that \textbf{GardensPoint and campus are not the same kind of night data}.
         \begin{itemize}
-          \item whether a descriptor can handle a strong day-night appearance gap
-          \item whether the correct place is ranked first or only appears later in the list
-          \item whether a strong result is consistent across many query frames
+          \item \textbf{GardensPoint}: night images appear exposure-compensated or over-brightened, and are brighter on average.
+          \item \textbf{Campus}: night images are darker and slightly lower in contrast than day images.
         \end{itemize}
       \end{block}
 
-      \begin{block}{How we interpret it}
-        \small
-        We treat GardensPoint as the \textbf{controlled benchmark}, then use the campus dataset as the \textbf{transfer test} for our own environment.
+      \begin{block}{Strict campus is structurally harder}
+        \footnotesize
+        \begin{itemize}
+          \item 33 exact filename matches
+          \item 12 marked no-match queries
+          \item 19 phone images with no strict day counterpart
+        \end{itemize}
+      \end{block}
+
+      \begin{block}{Why this matters}
+        \footnotesize
+        We keep \textbf{GardensPoint} as the controlled benchmark, but the EDA explains why the \textbf{campus transfer test} is harder: it combines a darker night domain with many hard no-match cases. It also tells us how to read experiments: benchmark gains do not automatically imply true dark-night robustness, and low campus precision may come from dataset structure as well as descriptor weakness.
       \end{block}
 
     \column{0.42\textwidth}
-      \includegraphics[width=\linewidth,height=0.68\textheight,keepaspectratio]{../../output_images/runs/benchmarks/0010_demo_gardenspoint_salad_20260424_161122/pr_curve.png}
+      \includegraphics[width=\linewidth,height=0.60\textheight,keepaspectratio]{../../output_images/eda/data_profiling/campus_strict_query_composition.png}
   \end{columns}
 \end{frame}
 
-\begin{frame}{7. Campus Results: Strict Image-Level}
+\begin{frame}[t,shrink=8]{7. Campus Results: Strict Image-Level}
   \begin{columns}[T,totalwidth=\textwidth]
     \column{0.52\textwidth}
       \begin{center}
+      \scriptsize
       \begin{tabular}{lccccc}
         \toprule
         \textbf{Descriptor} & \textbf{AUC} & \textbf{R@100P} & \textbf{R@1} & \textbf{R@5} & \textbf{R@10} \\
@@ -232,29 +238,29 @@
 
       \vspace{0.6em}
       \begin{block}{Interpretation}
-        \small
+        \footnotesize
         Under strict 1-to-1 labels, \textbf{SelaVPR++ gives the strongest top-1 retrieval} while SALAD stays strong. No-match rejection remains difficult, and VPRTempo is not competitive in this transfer setting.
       \end{block}
 
     \column{0.44\textwidth}
-      \includegraphics[width=\linewidth,height=0.60\textheight,keepaspectratio]{../../output_images/runs/campus_strict/0004_campus_strict_salad_20260424_150007/matches_examples.png}
+      \includegraphics[width=\linewidth,height=0.54\textheight,keepaspectratio]{../../output_images/runs/campus_strict/0004_campus_strict_salad_20260424_150007/matches_examples.png}
   \end{columns}
 \end{frame}
 
-\begin{frame}{8. What The Strict Campus Results Mean}
+\begin{frame}[t,shrink=6]{8. What The Strict Campus Results Mean}
   \begin{columns}[T,totalwidth=\textwidth]
     \column{0.44\textwidth}
-      \includegraphics[width=\linewidth,height=0.56\textheight,keepaspectratio]{../../output_images/runs/campus_strict/0004_campus_strict_salad_20260424_150007/pr_curve.png}
+      \includegraphics[width=\linewidth,height=0.50\textheight,keepaspectratio]{../../output_images/runs/campus_strict/0004_campus_strict_salad_20260424_150007/pr_curve.png}
 
       \vspace{0.4em}
       \begin{block}{Key observation}
-        \small
+        \footnotesize
         The campus setting is much harsher than GardensPoint because it mixes day-night change with viewpoint change, limited map coverage, and many hard no-match cases.
       \end{block}
 
     \column{0.52\textwidth}
       \begin{block}{Interpretation}
-        \small
+        \footnotesize
         \begin{itemize}
           \item \textbf{SelaVPR++} gives the best top-1 retrieval under the strict protocol.
           \item \textbf{SALAD} stays consistently strong and reaches perfect R@5 and R@10.
@@ -264,13 +270,13 @@
       \end{block}
 
       \begin{block}{Main lesson}
-        \small
+        \footnotesize
         Strong modern descriptors clearly help, but descriptor quality alone does not fully solve rejection and ambiguity in a small real campus deployment.
       \end{block}
   \end{columns}
 \end{frame}
 
-\begin{frame}{9. Live System and Demo}
+\begin{frame}[t,shrink=8]{9. Live System and Demo}
   \begin{center}
   \begin{tikzpicture}[
     node distance=9mm and 8mm,
@@ -294,12 +300,13 @@
 
   \vspace{0.8em}
   \begin{block}{Current status}
-    \small
-    We already have an end-to-end live pipeline for map building and localization. The next step is to connect the strongest descriptor choices and lightweight temporal ideas to the demo path.
+    \scriptsize
+    We already have an end-to-end live pipeline for map building and localization.\\
+    The next step is to connect the strongest descriptor choices and lightweight temporal ideas to the demo path.
   \end{block}
 \end{frame}
 
-\begin{frame}{10. Main Findings}
+\begin{frame}[t,shrink=10]{10. Main Findings}
   \begin{enumerate}
     \item Our hypothesis is supported: descriptor choice strongly affects nocturnal VPR performance.
     \item GardensPoint remains the right primary benchmark because it directly matches the day-to-night problem.
@@ -310,7 +317,7 @@
   \end{enumerate}
 \end{frame}
 
-\begin{frame}{11. Next Steps}
+\begin{frame}[t,shrink=4]{11. Next Steps}
   \begin{block}{What we would do next}
     \small
     \begin{itemize}

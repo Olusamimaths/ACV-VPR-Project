@@ -21,6 +21,7 @@ import sys
 
 from evaluation.metrics import createPR, recallAt100precision, recallAtK
 from evaluation import show_correct_and_wrong_matches
+from evaluation.preprocessing import apply_preprocessing, preprocess_summary, preprocessing_suffix
 from evaluation.run_output import DEFAULT_OUTPUT_ROOT, ExperimentRunOutput
 from matching import matching
 from datasets.load_dataset import GardensPointDataset, StLuciaDataset, SFUDataset
@@ -47,15 +48,22 @@ def main():
     parser.add_argument('--vprtempo_dims', type=str, default='56,56', help="Input dims for VPRTempo preprocessing, e.g. '56,56'")
     parser.add_argument('--vprtempo_patches', type=int, default=15, help='Patch normalization window used by VPRTempo (default: 15)')
     parser.add_argument('--vprtempo_batch_size', type=int, default=8, help='Batch size for VPRTempo feature extraction (default: 8)')
+    parser.add_argument('--preprocess', type=str, default='none', choices=['none', 'clahe_query', 'clahe_all'], help='Optional image preprocessing before descriptor extraction')
+    parser.add_argument('--clahe_clip_limit', type=float, default=2.0, help='CLAHE clip limit (default: 2.0)')
+    parser.add_argument('--clahe_tile_grid', type=int, default=8, help='CLAHE tile grid size (default: 8)')
     args = parser.parse_args()
 
     print('========== Start VPR with {} descriptor on dataset {}'.format(args.descriptor, args.dataset))
+    print(f'========== Preprocessing: {preprocess_summary(args.preprocess, clip_limit=args.clahe_clip_limit, tile_grid_size=args.clahe_tile_grid)}')
+
+    preprocess_suffix = preprocessing_suffix(args.preprocess)
+    legacy_prefix = f'{args.dataset}{preprocess_suffix}'
 
     run_output = None
     if args.save_results:
         run_output = ExperimentRunOutput.create(
             args.output_root,
-            run_slug=f'demo_{args.dataset}_{args.descriptor}',
+            run_slug=f'demo_{args.dataset}_{args.descriptor}{preprocess_suffix}',
             category='benchmarks',
         )
         print(f'===== Saving run outputs to {run_output.run_dir}')
@@ -72,6 +80,13 @@ def main():
         raise ValueError('Unknown dataset: ' + args.dataset)
 
     imgs_db, imgs_q, GThard, GTsoft = dataset.load()
+    imgs_db, imgs_q = apply_preprocessing(
+        imgs_db,
+        imgs_q,
+        mode=args.preprocess,
+        clahe_clip_limit=args.clahe_clip_limit,
+        clahe_tile_grid_size=args.clahe_tile_grid,
+    )
 
     extractor_kwargs = {}
     if args.descriptor == 'VPRTempo':
@@ -124,7 +139,7 @@ def main():
     plt.axis('off')
     plt.title('Similarity matrix S')
     if run_output is not None:
-        run_output.savefig(fig, 'similarity_matrix.png', legacy_filename=f'{args.dataset}_similarity_matrix.png')
+        run_output.savefig(fig, 'similarity_matrix.png', legacy_filename=f'{legacy_prefix}_similarity_matrix.png')
 
     # matching decision making
     print('===== Match images')
@@ -149,7 +164,7 @@ def main():
     )
     if run_output is not None and save_matches_path is not None:
         try:
-            run_output.copy_to_legacy(save_matches_path, legacy_filename=f'{args.dataset}_matches_examples.png')
+            run_output.copy_to_legacy(save_matches_path, legacy_filename=f'{legacy_prefix}_matches_examples.png')
         except FileNotFoundError:
             pass
 
@@ -164,7 +179,7 @@ def main():
     ax2.axis('off')
     ax2.set_title('Thresholding S>=thresh')
     if run_output is not None:
-        run_output.savefig(fig, 'matching_results.png', legacy_filename=f'{args.dataset}_matching_results.png')
+        run_output.savefig(fig, 'matching_results.png', legacy_filename=f'{legacy_prefix}_matching_results.png')
 
     # PR-curve
     P, R = createPR(S, GThard, GTsoft, matching='multi', n_thresh=100)
@@ -177,7 +192,7 @@ def main():
     plt.grid('on')
     plt.draw()
     if run_output is not None:
-        run_output.savefig(plt.gcf(), 'pr_curve.png', legacy_filename=f'{args.dataset}_pr_curve.png')
+        run_output.savefig(plt.gcf(), 'pr_curve.png', legacy_filename=f'{legacy_prefix}_pr_curve.png')
 
     # area under curve (AUC)
     AUC = np.trapz(P, R)
@@ -201,6 +216,7 @@ def main():
             + f'Command: {" ".join(sys.argv)}\n'
             + f'Dataset: {args.dataset}\n'
             + f'Descriptor: {args.descriptor}\n'
+            + f'Preprocessing: {preprocess_summary(args.preprocess, clip_limit=args.clahe_clip_limit, tile_grid_size=args.clahe_tile_grid)}\n'
             + f'Database images: {len(imgs_db)}\n'
             + f'Query images: {len(imgs_q)}\n'
             + f'True positives (thresholded): {len(TP)}\n'
@@ -211,7 +227,7 @@ def main():
             + f'R@5: {RatK[5]:.3f}\n'
             + f'R@10: {RatK[10]:.3f}\n'
         )
-        run_output.write_text('results.txt', results_text, legacy_filename=f'{args.dataset}_results.txt')
+        run_output.write_text('results.txt', results_text, legacy_filename=f'{legacy_prefix}_results.txt')
 
     plt.show()
 

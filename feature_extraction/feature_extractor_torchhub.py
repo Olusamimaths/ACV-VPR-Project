@@ -153,7 +153,10 @@ class TorchHubGlobalFeatureExtractor(FeatureExtractor):
             return self._compute_features_small_batch(images)
 
         dataset = TorchHubImageDataset(images, self.preprocess)
-        num_workers = 0 if len(dataset) < 32 else min(4, os.cpu_count() or 1)
+        # Use a single-process DataLoader for portability. Multi-worker loading
+        # can fail in constrained environments because PyTorch tries to create
+        # shared-memory managers even for read-only image batches.
+        num_workers = 0
         batch_size = min(self.large_batch_size, len(dataset))
         loader = DataLoader(
             dataset=dataset,

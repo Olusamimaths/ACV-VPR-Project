@@ -1,0 +1,29 @@
+Dataset Profiling EDA Summary
+======================================================================
+
+1. Are the datasets balanced at the split level?
+   GardensPoint is balanced at 200 day references and 200 night queries.
+   Campus is smaller and less balanced at 50 day references and 64 night queries.
+
+2. Are image sizes consistent?
+   GardensPoint day mean size: 960x540
+   GardensPoint night mean size: 640x360
+   Campus day mean size: 640x480
+   Campus night mean size: 640x480
+   GardensPoint uses different day and night resolutions, while campus is size-consistent.
+
+3. How different are the day and night image distributions?
+   GardensPoint brightness means: day 97.1, night 127.6
+   Campus brightness means: day 112.0, night 79.1
+   GardensPoint night images appear exposure-compensated or over-brightened, while campus night images are genuinely darker.
+
+4. How challenging is the strict campus query composition before any model is used?
+   Exact filename matches: 33
+   Marked no-match queries: 12
+   PXL unmatched queries: 19
+   This means the strict campus protocol is almost half hard no-match or non-1-to-1 queries.
+
+5. Is campus place coverage balanced?
+   Unique place IDs: 10
+   Largest night place bucket: entrance (25 images)
+   Place coverage is uneven, so some scenes are much more represented than others.

@@ -12,6 +12,7 @@ import sys
 
 from evaluation.metrics import createPR, recallAt100precision, recallAtK
 from evaluation import show_correct_and_wrong_matches
+from evaluation.preprocessing import apply_preprocessing, preprocess_summary, preprocessing_suffix
 from evaluation.run_output import DEFAULT_OUTPUT_ROOT, ExperimentRunOutput
 from matching import matching
 from datasets.load_dataset import CampusDataset
@@ -50,17 +51,28 @@ def main():
                        help='Patch normalization window used by VPRTempo (default: 15)')
     parser.add_argument('--vprtempo_batch_size', type=int, default=8,
                        help='Batch size for VPRTempo feature extraction (default: 8)')
+    parser.add_argument('--preprocess', type=str, default='none',
+                       choices=['none', 'clahe_query', 'clahe_all'],
+                       help='Optional image preprocessing before descriptor extraction')
+    parser.add_argument('--clahe_clip_limit', type=float, default=2.0,
+                       help='CLAHE clip limit (default: 2.0)')
+    parser.add_argument('--clahe_tile_grid', type=int, default=8,
+                       help='CLAHE tile grid size (default: 8)')
     args = parser.parse_args()
 
     print('=' * 70)
     print(f'Campus VPR Test: {args.descriptor} descriptor')
     print('=' * 70)
+    print(f'Preprocessing: {preprocess_summary(args.preprocess, clip_limit=args.clahe_clip_limit, tile_grid_size=args.clahe_tile_grid)}')
+
+    preprocess_suffix = preprocessing_suffix(args.preprocess)
+    legacy_prefix = f'campus{preprocess_suffix}'
 
     run_output = None
     if args.save_results:
         run_output = ExperimentRunOutput.create(
             args.output_root,
-            run_slug=f'campus_strict_{args.descriptor}',
+            run_slug=f'campus_strict_{args.descriptor}{preprocess_suffix}',
             category='campus-strict',
         )
         print(f'\n===== Saving run outputs to {run_output.run_dir}')
@@ -69,6 +81,13 @@ def main():
     print('\n===== Load campus dataset (day -> night)')
     dataset = CampusDataset(destination=args.dataset_dir)
     imgs_db, imgs_q, GThard, GTsoft = dataset.load()
+    imgs_db, imgs_q = apply_preprocessing(
+        imgs_db,
+        imgs_q,
+        mode=args.preprocess,
+        clahe_clip_limit=args.clahe_clip_limit,
+        clahe_tile_grid_size=args.clahe_tile_grid,
+    )
 
     print(f'\n  Database (day images): {len(imgs_db)} images')
     print(f'  Queries (night images): {len(imgs_q)} images')
@@ -133,7 +152,7 @@ def main():
     plt.title(f'Similarity Matrix S - {args.descriptor}')
     plt.tight_layout()
     if run_output is not None:
-        run_output.savefig(fig, 'similarity_matrix.png', legacy_filename='campus_similarity_matrix.png')
+        run_output.savefig(fig, 'similarity_matrix.png', legacy_filename=f'{legacy_prefix}_similarity_matrix.png')
 
     # Matching strategies
     print('\n===== Apply matching strategies')
@@ -163,7 +182,7 @@ def main():
         )
         if run_output is not None and save_matches_path is not None:
             try:
-                run_output.copy_to_legacy(save_matches_path, legacy_filename='campus_matches_examples.png')
+                run_output.copy_to_legacy(save_matches_path, legacy_filename=f'{legacy_prefix}_matches_examples.png')
             except FileNotFoundError:
                 pass
         print(f'Displaying {min(args.n_correct, len(TP))} correct and {min(args.n_wrong, len(FP))} wrong matches')
@@ -187,7 +206,7 @@ def main():
     ax2.grid(False)
     plt.tight_layout()
     if run_output is not None:
-        run_output.savefig(fig, 'matching_results.png', legacy_filename='campus_matching_results.png')
+        run_output.savefig(fig, 'matching_results.png', legacy_filename=f'{legacy_prefix}_matching_results.png')
 
     # Evaluation metrics
     print('\n' + '=' * 70)
@@ -207,7 +226,7 @@ def main():
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
     if run_output is not None:
-        run_output.savefig(fig, 'pr_curve.png', legacy_filename='campus_pr_curve.png')
+        run_output.savefig(fig, 'pr_curve.png', legacy_filename=f'{legacy_prefix}_pr_curve.png')
 
     # Area under curve
     AUC = np.trapz(P, R)
@@ -247,6 +266,7 @@ def main():
             + '=' * 70 + '\n\n'
             + f'Command: {" ".join(sys.argv)}\n'
             + f'Descriptor: {args.descriptor}\n'
+            + f'Preprocessing: {preprocess_summary(args.preprocess, clip_limit=args.clahe_clip_limit, tile_grid_size=args.clahe_tile_grid)}\n'
             + f'Dataset directory: {args.dataset_dir}\n'
             + f'Database images: {len(imgs_db)}\n'
             + f'Query images: {len(imgs_q)}\n'
@@ -260,7 +280,7 @@ def main():
             + f'R@5: {RatK[5]:.3f}\n'
             + f'R@10: {RatK[10]:.3f}\n'
         )
-        results_file = run_output.write_text('results.txt', results_text, legacy_filename='campus_results.txt')
+        results_file = run_output.write_text('results.txt', results_text, legacy_filename=f'{legacy_prefix}_results.txt')
         print(f'\nResults saved to {results_file}')
 
     print('\n' + '=' * 70)

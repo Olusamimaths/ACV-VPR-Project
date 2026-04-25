@@ -84,15 +84,15 @@ python test_campus_dataset.py --descriptor CosPlace --n_correct 2 --n_wrong 15 -
 
 ## 5. Output Files
 
-When `--save_results` is used, the campus script writes files into [output_images/](../../output_images).
+When `--save_results` is used, the campus script writes files into [output_images/runs/](../../output_images/runs), and also refreshes the latest legacy copies in [output_images/legacy/campus_strict/](../../output_images/legacy/campus_strict).
 
 Common outputs:
 
-- `campus_similarity_matrix.png`
-- `campus_matching_results.png`
-- `campus_pr_curve.png`
-- `campus_matches_examples.png`
-- `campus_results.txt`
+- `output_images/legacy/campus_strict/campus_similarity_matrix.png`
+- `output_images/legacy/campus_strict/campus_matching_results.png`
+- `output_images/legacy/campus_strict/campus_pr_curve.png`
+- `output_images/legacy/campus_strict/campus_matches_examples.png`
+- `output_images/legacy/campus_strict/campus_results.txt`
 
 These are useful for:
 

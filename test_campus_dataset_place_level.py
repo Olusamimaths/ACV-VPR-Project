@@ -13,6 +13,7 @@ from matplotlib import pyplot as plt
 from datasets.load_dataset_place_level import CampusPlaceLevelDataset
 from evaluation import show_correct_and_wrong_matches
 from evaluation.metrics import createPR, recallAt100precision, recallAtK
+from evaluation.preprocessing import apply_preprocessing, preprocess_summary, preprocessing_suffix
 from evaluation.run_output import DEFAULT_OUTPUT_ROOT, ExperimentRunOutput
 from feature_extraction.factory import (
     PATCH_DESCRIPTOR_NAMES,
@@ -87,17 +88,40 @@ def main():
         default=8,
         help="Batch size for VPRTempo feature extraction (default: 8)",
     )
+    parser.add_argument(
+        "--preprocess",
+        type=str,
+        default="none",
+        choices=["none", "clahe_query", "clahe_all"],
+        help="Optional image preprocessing before descriptor extraction",
+    )
+    parser.add_argument(
+        "--clahe_clip_limit",
+        type=float,
+        default=2.0,
+        help="CLAHE clip limit (default: 2.0)",
+    )
+    parser.add_argument(
+        "--clahe_tile_grid",
+        type=int,
+        default=8,
+        help="CLAHE tile grid size (default: 8)",
+    )
     args = parser.parse_args()
 
     print("=" * 70)
     print(f"Campus VPR Test (Place-Level): {args.descriptor} descriptor")
     print("=" * 70)
+    print(f"Preprocessing: {preprocess_summary(args.preprocess, clip_limit=args.clahe_clip_limit, tile_grid_size=args.clahe_tile_grid)}")
+
+    preprocess_suffix = preprocessing_suffix(args.preprocess)
+    legacy_prefix = f"campus_place_level{preprocess_suffix}"
 
     run_output = None
     if args.save_results:
         run_output = ExperimentRunOutput.create(
             args.output_root,
-            run_slug=f"campus_place_level_{args.descriptor}",
+            run_slug=f"campus_place_level_{args.descriptor}{preprocess_suffix}",
             category="campus-place-level",
         )
         print(f"\n===== Saving run outputs to {run_output.run_dir}")
@@ -105,6 +129,13 @@ def main():
     print("\n===== Load campus dataset (day -> night, place-level)")
     dataset = CampusPlaceLevelDataset(destination=args.dataset_dir)
     imgs_db, imgs_q, GThard, GTsoft = dataset.load()
+    imgs_db, imgs_q = apply_preprocessing(
+        imgs_db,
+        imgs_q,
+        mode=args.preprocess,
+        clahe_clip_limit=args.clahe_clip_limit,
+        clahe_tile_grid_size=args.clahe_tile_grid,
+    )
 
     print(f"\n  Database (day images): {len(imgs_db)} images")
     print(f"  Queries (night images): {len(imgs_q)} images")
@@ -170,7 +201,7 @@ def main():
         run_output.savefig(
             fig,
             "similarity_matrix.png",
-            legacy_filename="campus_place_level_similarity_matrix.png",
+            legacy_filename=f"{legacy_prefix}_similarity_matrix.png",
         )
 
     print("\n===== Apply matching strategies")
@@ -199,7 +230,7 @@ def main():
             try:
                 run_output.copy_to_legacy(
                     save_matches_path,
-                    legacy_filename="campus_place_level_matches_examples.png",
+                    legacy_filename=f"{legacy_prefix}_matches_examples.png",
                 )
             except FileNotFoundError:
                 pass
@@ -226,7 +257,7 @@ def main():
         run_output.savefig(
             fig,
             "matching_results.png",
-            legacy_filename="campus_place_level_matching_results.png",
+            legacy_filename=f"{legacy_prefix}_matching_results.png",
         )
 
     print("\n" + "=" * 70)
@@ -248,7 +279,7 @@ def main():
         run_output.savefig(
             fig,
             "pr_curve.png",
-            legacy_filename="campus_place_level_pr_curve.png",
+            legacy_filename=f"{legacy_prefix}_pr_curve.png",
         )
 
     AUC = np.trapz(P, R)
@@ -282,6 +313,7 @@ def main():
             + "=" * 70 + "\n\n"
             + f"Command: {' '.join(sys.argv)}\n"
             + f"Descriptor: {args.descriptor}\n"
+            + f"Preprocessing: {preprocess_summary(args.preprocess, clip_limit=args.clahe_clip_limit, tile_grid_size=args.clahe_tile_grid)}\n"
             + f"Dataset directory: {args.dataset_dir}\n"
             + f"Database images: {len(imgs_db)}\n"
             + f"Query images: {len(imgs_q)}\n"
@@ -306,7 +338,7 @@ def main():
         results_file = run_output.write_text(
             "results.txt",
             results_text,
-            legacy_filename="campus_place_level_results.txt",
+            legacy_filename=f"{legacy_prefix}_results.txt",
         )
         print(f"\nResults saved to {results_file}")
 
