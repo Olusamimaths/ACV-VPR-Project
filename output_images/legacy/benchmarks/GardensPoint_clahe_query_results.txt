@@ -1,0 +1,17 @@
+VPR Benchmark Test Results
+======================================================================
+
+Command: demo.py --descriptor EigenPlaces --dataset GardensPoint --preprocess clahe_query --save_results
+Dataset: GardensPoint
+Descriptor: EigenPlaces
+Preprocessing: clahe_query (clip_limit=2.0, tile_grid_size=8)
+Database images: 200
+Query images: 200
+True positives (thresholded): 88
+False positives (thresholded): 16
+
+AUC: 0.655
+R@100P: 0.240
+R@1: 0.355
+R@5: 0.825
+R@10: 0.930

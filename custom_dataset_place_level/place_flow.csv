@@ -1,0 +1,11 @@
+flow_step,place_id,place_name,day_images,night_examples,description
+1,P01,lobby,"image001|image002|image003|image004|image005|image006","image001|image002|image003-npm|image004|image005|image006","Central atrium view with the pillar, flags, and lobby kiosk."
+2,P02,entrance,"image007|image008|image009|image010|image011|image012|image013|image014|image015|image016|image017|image018","image007|image008|image009|image010|image011|image012|image013|image014|image015|image016|image017|image018|npm01|npm02|npm03|npm04","Red wall, glass corner, exterior ramp, columns, and the transition back into the atrium."
+3,P03,ncafe,"image019|image020","image019|image020-npm","Glass doorway into the innovation hub / adjacent interior transition."
+4,P04,booth,"image021|image022|image023","image021|image022|image023|PXL_20260320_180255131|PXL_20260320_180313688","Booth seating area and balcony walkway near the atrium edge."
+5,P05,screens,"image024|image025|image026|image027","image025","Large digital screen wall and balcony railing section."
+6,P06,reception,"image028|image029|image030|image031","image028|image029|image030-npm|image031-npm|PXL_20260320_180419441|PXL_20260320_180423996|PXL_20260320_180436908|PXL_20260320_180449128|PXL_20260320_180523909|PXL_20260320_180556165|PXL_20260320_180602207|PXL_20260320_180604535","Red corridor with flags, lounge chairs, and dark interior return views."
+7,P07,cafeteria,"image032|image033|image034|image035|image036|image037|image038","image032-npm|image033|image034|image035|image037|image038","Staircase, tables, elevator-side corridor, and adjacent seating area."
+8,P08,cafbanner,"image039|image040","image040","Pink banner corner by the window and seating area."
+9,P09,outdoor,"image041|image042|image043|image044|image045|image046|image047|image048","image041|image042|image043-npm|image045-npm|image047-npm|PXL_20260320_181233916","Outdoor brick walkway and building-side path with shrubs and lights."
+10,P10,hallway,"image049|image050","","Narrow indoor hallway; no confident night counterpart was found during this rematch."

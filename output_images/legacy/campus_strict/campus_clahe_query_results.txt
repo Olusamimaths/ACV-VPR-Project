@@ -1,0 +1,19 @@
+Campus Dataset VPR Test Results
+======================================================================
+
+Command: test_campus_dataset.py --descriptor EigenPlaces --preprocess clahe_query --save_results
+Descriptor: EigenPlaces
+Preprocessing: clahe_query (clip_limit=2.0, tile_grid_size=8)
+Dataset directory: custom_dataset/
+Database images: 50
+Query images: 64
+Queries with matches: 33
+Queries without matches (-npm): 31
+True positives (thresholded): 0
+False positives (thresholded): 0
+
+AUC: 0.488
+R@100P: 0.030
+R@1: 0.879
+R@5: 1.000
+R@10: 1.000

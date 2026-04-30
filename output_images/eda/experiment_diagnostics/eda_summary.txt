@@ -1,0 +1,32 @@
+Project EDA Summary
+======================================================================
+
+1. How strong is the day-night appearance gap?
+   GardensPoint day mean brightness: 97.1
+   GardensPoint night mean brightness: 127.6
+   GardensPoint brightness change (day - night): -30.5
+   Campus day mean brightness: 112.0
+   Campus night mean brightness: 79.1
+   Campus brightness change (day - night): 32.9
+   GardensPoint night images appear exposure-compensated or over-brightened relative to the day split,
+   so their higher mean intensity should not be interpreted as an easier natural night condition.
+
+2. How hard is the strict campus label setup?
+   Exact filename match queries: 33
+   Marked no-match queries: 12
+   PXL unmatched queries: 19
+
+3. Is the campus place-level coverage balanced?
+   Largest night place bucket: entrance (25 night images)
+   Number of unique place IDs: 10
+
+4. Which descriptors currently look strongest?
+   Best GardensPoint AUC: SelaVPR++ (0.937)
+   Best GardensPoint R@1: SelaVPR++ (0.465)
+   Best strict campus AUC: SALAD (0.504)
+   Best strict campus R@1: SelaVPR++ (0.909)
+
+5. Main implication
+   The campus dataset is not only darker at night, but also structurally harder because
+   many queries are treated as no-match cases. This supports the project focus on strong
+   descriptors first, followed by better rejection and temporal reasoning.

@@ -48,11 +48,14 @@ def add_frame(img_in: np.ndarray, color: Tuple[int, int, int]) -> np.ndarray:
 
 
 def show(
-    db_imgs: List[np.ndarray], 
-    q_imgs: List[np.ndarray], 
-    TP: np.ndarray, 
-    FP: np.ndarray, 
+    db_imgs: List[np.ndarray],
+    q_imgs: List[np.ndarray],
+    TP: np.ndarray,
+    FP: np.ndarray,
     M: Optional[np.ndarray] = None,
+    n_correct: int = 1,
+    n_wrong: int = 1,
+    save_path: Optional[str] = None,
 ) -> None:
     """
     Displays a visual comparison of true positive and false positive image pairs
@@ -64,6 +67,9 @@ def show(
         TP (np.ndarray): A two-dimensional array containing the indices of true positive pairs.
         FP (np.ndarray): A two-dimensional array containing the indices of false positive pairs.
         M (Optional[np.ndarray], optional): A two-dimensional array representing the similarity matrix. Defaults to None.
+        n_correct (int, optional): Number of correct matches to display. Defaults to 1.
+        n_wrong (int, optional): Number of wrong matches to display. Defaults to 1.
+        save_path (Optional[str], optional): Path to save the figure. If None, figure is displayed but not saved. Defaults to None.
 
     Returns:
         None: This function displays the comparison result using matplotlib.pyplot but does not return any value.
@@ -73,33 +79,62 @@ def show(
         print('No true positives found.')
         return
 
-    idx_tp = np.random.permutation(len(TP))[:1]
+    print(f'\n  Creating visualization with {n_correct} correct and {n_wrong} wrong matches...')
 
-    db_tp = db_imgs[int(TP[idx_tp, 0])]
-    q_tp = q_imgs[int(TP[idx_tp, 1])]
+    # Limit to available TPs
+    n_correct = min(n_correct, len(TP))
+    idx_tp = np.random.permutation(len(TP))[:n_correct]
 
-    if db_tp.shape != q_tp.shape:
-        q_tp = resize(q_tp.copy(), db_tp.shape, anti_aliasing=True)
-        q_tp = np.uint8(q_tp*255)
+    print(f'  Selected {n_correct} correct match(es) from {len(TP)} available')
 
-    img = add_frame(np.concatenate([db_tp, q_tp], axis=1), [119, 172, 48])
+    tp_pairs = []
+    for i, idx in enumerate(idx_tp):
+        db_idx = int(TP[idx, 0])
+        q_idx = int(TP[idx, 1])
+        print(f'    ✓ Correct match {i+1}: DB image {db_idx} <-> Query image {q_idx}')
+
+        db_tp = db_imgs[db_idx]
+        q_tp = q_imgs[q_idx]
+
+        if db_tp.shape != q_tp.shape:
+            q_tp = resize(q_tp.copy(), db_tp.shape, anti_aliasing=True)
+            q_tp = np.uint8(q_tp*255)
+
+        pair_img = add_frame(np.concatenate([db_tp, q_tp], axis=1), [119, 172, 48])
+        tp_pairs.append(pair_img)
+
+    # Concatenate all TP pairs vertically
+    img = np.concatenate(tp_pairs, axis=0)
 
     # false positive FP
-    try:
-        idx_fp = np.random.permutation(len(FP))[:1]
+    if len(FP) > 0:
+        # Limit to available FPs
+        n_wrong = min(n_wrong, len(FP))
+        idx_fp = np.random.permutation(len(FP))[:n_wrong]
 
-        db_fp = db_imgs[int(FP[idx_fp, 0])]
-        q_fp = q_imgs[int(FP[idx_fp, 1])]
+        print(f'  Selected {n_wrong} wrong match(es) from {len(FP)} available')
 
-        if db_fp.shape != q_fp.shape:
-            q_fp = resize(q_fp.copy(), db_fp.shape, anti_aliasing=True)
-            q_fp = np.uint8(q_fp*255)
+        fp_pairs = []
+        for i, idx in enumerate(idx_fp):
+            db_idx = int(FP[idx, 0])
+            q_idx = int(FP[idx, 1])
+            print(f'    ✗ Wrong match {i+1}: DB image {db_idx} <-> Query image {q_idx}')
 
-        img_fp = add_frame(np.concatenate(
-            [db_fp, q_fp], axis=1), [162, 20, 47])
+            db_fp = db_imgs[db_idx]
+            q_fp = q_imgs[q_idx]
+
+            if db_fp.shape != q_fp.shape:
+                q_fp = resize(q_fp.copy(), db_fp.shape, anti_aliasing=True)
+                q_fp = np.uint8(q_fp*255)
+
+            pair_img = add_frame(np.concatenate([db_fp, q_fp], axis=1), [162, 20, 47])
+            fp_pairs.append(pair_img)
+
+        # Concatenate all FP pairs vertically
+        img_fp = np.concatenate(fp_pairs, axis=0)
         img = np.concatenate([img, img_fp], axis=0)
-    except:
-        pass
+    else:
+        print(f'  No false positives available to display')
 
     # concat M
     if M is not None:
@@ -109,7 +144,19 @@ def show(
         img = np.concatenate([M, img], axis=1)
 
     # show
-    plt.figure()
-    plt.imshow(img)
-    plt.axis('off')
-    plt.title('Examples for correct and wrong matches from S>=thresh')
+    fig = plt.figure(figsize=(12, 8))
+    ax = plt.gca()
+    ax.imshow(img)
+    ax.axis('off')
+    plt.title(f'Examples: {n_correct} correct (green) and {n_wrong} wrong (red) matches from S>=thresh')
+    plt.tight_layout()
+
+    # Make sure the figure is drawn
+    fig.canvas.draw()
+    plt.draw()
+
+    # Save if path provided
+    if save_path is not None:
+        fig.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f'Saved matches visualization to: {save_path}')
+        print(f'  Image shape: {img.shape}, dtype: {img.dtype}')

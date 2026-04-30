@@ -1,0 +1,222 @@
+# Default configuration for the live VPR pipeline.
+# The CLI loads this file automatically, and any explicit CLI flag overrides it.
+#
+# Quick usage notes:
+# - Set `general.mode` first, then tweak the matching section below.
+# - Use quoted strings for camera indexes, for example `"0"` or `"1"`.
+# - Paths under `artifacts/` are automatically organized into per-run folders
+#   unless `artifacts.group_artifacts_by_run` is set to false.
+
+general:
+  # Main pipeline mode.
+  # Common values:
+  # - live: run live localization from a camera or stream
+  # - build_live_map: record or reuse a traversal and build a map from it
+  # - build_map: build a map from an existing image folder
+  # - video: run localization on a prerecorded video
+  # Utility values:
+  # - check_source, list_sources
+  # - save_source_alias, list_source_aliases, delete_source_alias
+  mode: live
+
+  # Global descriptor / feature extractor.
+  # Available values:
+  # - CosPlace: strong default for this project
+  # - EigenPlaces: good benchmark alternative
+  # - SALAD: modern DINOv2-based descriptor, stronger but heavier
+  # - SelaVPR++: modern DINOv2-based VPR descriptor from the 2025 T-PAMI paper
+  # - VPRTempo: dataset-specific spiking VPR model, requires a trained checkpoint
+  # - NetVLAD, PatchNetVLAD: classical VPR descriptors
+  # - AlexNet, HDC-DELF, SAD: lighter / baseline-style options
+  descriptor: CosPlace
+
+  # Folder-based map-building source.
+  data_dir: custom_dataset/day_images
+
+  # Stable map alias used by inference.
+  # During grouped runs, the real build artifact is saved under artifacts/runs/,
+  # then copied here as a stable alias and recorded in latest_map_path.txt.
+  map_path: artifacts/live_maps/campus_day_cosplace.npz
+
+  # If true, build_map scans nested folders under data_dir as well.
+  recursive: false
+
+  # Only relevant for mode=build_live_map.
+  # false: record a new traversal from --source
+  # true: reuse the file in source.video instead of recording
+  use_video_for_live_build: false
+
+artifacts:
+  # Root folder for grouped per-run outputs.
+  # The system will further split these into buckets such as:
+  # - live_map_builds/
+  # - live_localization/
+  # - video_localization/
+  artifact_root: artifacts/runs
+
+  # true: create timestamped run folders
+  # false: write directly to the configured paths
+  group_artifacts_by_run: true
+
+  # Optional manual run name.
+  # Use null to auto-generate one from mode / descriptor / source.
+  run_name: null
+
+source:
+  # Camera / stream source for live modes.
+  # Examples:
+  # - "0" or "1" for webcam index
+  # - "phone" or "turbopi" for saved aliases
+  # - "http://192.168.1.20:4747/video" for an IP camera / phone stream
+  source: "0"
+
+  # Optional prerecorded video path.
+  # Used by:
+  # - mode=video
+  # - mode=build_live_map when general.use_video_for_live_build=true
+  video: null
+
+  # Optional alias name used with the alias-management modes.
+  # Example: alias: phone
+  alias: null
+
+  # Highest numeric source index to probe during list_sources.
+  source_scan_max: 10
+
+  # Optional folder for one preview image per detected source during list_sources.
+  # Use null to skip saving previews.
+  source_snapshot_dir: null
+
+  # Requested input capture resolution.
+  # These affect camera capture; the descriptor input is still resized later.
+  frame_width: 1280
+  frame_height: 720
+
+  # Mirror only the displayed frame, useful for laptop webcams.
+  mirror: false
+
+map_build:
+  # Descriptor input size.
+  # These are the images actually fed into the feature extractor.
+  resize_width: 640
+  resize_height: 480
+
+  # Folder for sampled reference frames during live map building.
+  capture_dir: artifacts/reference_captures
+
+  # Traversal recording path used by live map building.
+  recording_path: artifacts/reference_videos/live_reference_traversal.mp4
+
+  # Filename prefix for sampled reference frames.
+  capture_prefix: ref
+
+  # Sampling density when converting a traversal video into reference images.
+  # Example:
+  # - 1.0 = save roughly one frame per second
+  # - 2.0 = denser map
+  # - 0.5 = lighter map
+  sample_fps: 1.0
+
+  # Downsampling applied only to the saved reference JPEGs on disk.
+  # This reduces artifact size, not the descriptor input resolution directly.
+  # Common values:
+  # - 0.5: recommended default
+  # - 1.0: keep full saved frame size
+  capture_save_scale: 0.5
+
+  # Recorder behavior for live map building.
+  # false: open paused, press r to start
+  # true: start recording immediately
+  start_recording: false
+
+  # Optional limit on how many sampled reference frames to keep.
+  # Use null for no hard cap.
+  max_captures: null
+
+  # Minimum sampled frames required before a map is accepted.
+  min_captures: 5
+
+  # OpenCV window title used during traversal recording.
+  capture_window_name: Live VPR Map Recorder
+
+inference:
+  # Recognition threshold on the best similarity score.
+  # Higher = stricter recognition, lower = easier matching.
+  threshold: 0.5
+
+  # Number of top matches to display and report.
+  top_k: 5
+
+  # Inference cadence.
+  # - >0: process frames at this rate
+  # - <=0: process every frame
+  # Common values: 1.0, 2.0, 5.0
+  process_fps: 2.0
+
+  # false: open paused, press i to start inference
+  # true: begin inference immediately
+  start_inference: false
+
+  # Hide the top-k preview strip at startup.
+  hide_top_k: false
+
+  # Optional path for saving the annotated live/video session as a video.
+  output_video: null
+
+  # Folder for annotated per-inference images.
+  inference_stats_dir: artifacts/inference_stats
+
+  # Save one annotated report image after each inference.
+  save_inference_images: true
+
+  # Folder for frames saved manually with the s key during live/video runs.
+  snapshot_dir: artifacts/live_captures
+
+  # OpenCV window title for live localization.
+  window_name: Live VPR
+
+search:
+  # Search backend used to find nearest reference descriptors.
+  # Available values:
+  # - exact: exact full scan, best baseline for smaller maps
+  # - hnsw: fast ANN search on CPU
+  # - faiss_ivf_flat: clustered FAISS search with full vectors in clusters
+  # - faiss_ivf_pq: FAISS search with vector compression for larger maps
+  search_backend: exact
+
+  # Distance / similarity mode for the backend.
+  # Available values:
+  # - cosine: recommended default for normalized descriptors
+  # - inner_product: useful when explicitly using dot-product search
+  search_metric: cosine
+
+  # For ANN backends, retrieve this many candidates before optional reranking.
+  # Larger values are slower but safer.
+  search_candidate_k: 50
+
+  # Exact reranking of ANN candidates using the original descriptor matrix.
+  # Recommended: true
+  search_rerank: true
+
+  # HNSW parameters.
+  # Increase ef_search for better accuracy at the cost of latency.
+  # Increase M / ef_construction for a stronger but heavier index.
+  search_hnsw_m: 16
+  search_hnsw_ef_construction: 200
+  search_hnsw_ef_search: 64
+
+  # FAISS IVF parameters.
+  # nlist: number of coarse clusters
+  # nprobe: how many clusters to search at query time
+  search_ivf_nlist: 100
+  search_ivf_nprobe: 10
+
+  # FAISS PQ parameters for ivf_pq.
+  # pq_m: number of sub-vectors
+  # pq_bits: bits per codebook entry
+  search_pq_m: 16
+  search_pq_bits: 8
+
+  # Max number of descriptors used to train FAISS IVF indexes.
+  # Use <=0 to train on all descriptors.
+  search_train_limit: 10000

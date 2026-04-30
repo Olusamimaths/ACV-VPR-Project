@@ -12,7 +12,9 @@ with open(os.path.join(here, 'README.md'), encoding='utf-8') as f:
 install_require_list = [
     'numpy', 'matplotlib', 'Pillow', 'scipy',
     'scikit-image', 'tensorflow', 'tensorflow_hub',
-    'torch', 'torchvision', 'tqdm']
+    'torch', 'torchvision', 'tqdm', 'PyYAML',
+    'pandas', 'prettytable', 'pytorch-lightning',
+    'pytorch-metric-learning', 'torchmetrics', 'vprtempo']
 
 # workaround as opencv-python does not show up in "pip list" within a conda environment
 # we do not care as conda recipe has py-opencv requirement anyhow
@@ -49,13 +51,21 @@ setup(name='vpr_tutorial',
       ],
       python_requires='>=3.8',
       install_requires=install_require_list,
+      extras_require={
+          'search-hnsw': ['hnswlib'],
+          'search-faiss': ['faiss-cpu'],
+          'search-all': ['hnswlib', 'faiss-cpu'],
+      },
       packages=find_packages(),
       keywords=[
           'python', 'place recognition', 'image retrieval', 'computer vision', 'robotics'
       ],
-      scripts=['demo.py'],
+      scripts=['demo.py', 'live_vpr_test.py'],
       entry_points={
-        'console_scripts': ['vpr-tutorial-demo=demo:main',],
+        'console_scripts': [
+            'vpr-tutorial-demo=demo:main',
+            'vpr-tutorial-live=live_vpr_test:main',
+        ],
       },
     #   package_data={'': ['configs/*.ini', 'dataset_gt_files/*.npz', 'example_images/*',
     #                      'output_features/.hidden', 'pretrained_models/.hidden', 'results/.hidden',
