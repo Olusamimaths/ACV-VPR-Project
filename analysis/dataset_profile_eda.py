@@ -5,6 +5,7 @@ import argparse
 import csv
 import sys
 from collections import Counter
+from glob import glob
 from pathlib import Path
 
 import matplotlib
@@ -66,6 +67,37 @@ def make_montage(images: list[np.ndarray], indices: list[int], title: str) -> pl
         ax.imshow(images[idx])
         ax.set_title(f"{title} #{idx+1}", fontsize=9)
         ax.axis("off")
+    fig.tight_layout()
+    return fig
+
+
+def _normalize_campus_night_stem(stem: str) -> str | None:
+    if "-npm" in stem.lower() or stem.startswith("npm") or stem.startswith("PXL_"):
+        return None
+    if stem.startswith("image"):
+        return stem.split(" ")[0]
+    return stem
+
+
+def make_pair_comparison(
+    db_images: list[np.ndarray],
+    q_images: list[np.ndarray],
+    db_indices: list[int],
+    q_indices: list[int],
+    db_label: str,
+    q_label: str,
+) -> plt.Figure:
+    pairs = len(db_indices)
+    fig, axes = plt.subplots(pairs, 2, figsize=(7.2, 3.0 * pairs))
+    if pairs == 1:
+        axes = np.array([axes])
+    for row, (db_idx, q_idx) in enumerate(zip(db_indices, q_indices)):
+        axes[row, 0].imshow(db_images[db_idx])
+        axes[row, 0].set_title(f"{db_label} #{db_idx + 1}", fontsize=9)
+        axes[row, 0].axis("off")
+        axes[row, 1].imshow(q_images[q_idx])
+        axes[row, 1].set_title(f"{q_label} #{q_idx + 1}", fontsize=9)
+        axes[row, 1].axis("off")
     fig.tight_layout()
     return fig
 
@@ -136,6 +168,8 @@ def main() -> None:
     print("===== Load GardensPoint and campus datasets")
     gp_db_images, gp_q_images, _, _ = GardensPointDataset(destination=args.gardens_dir).load()
     campus_db_images, campus_q_images, _, _ = CampusDataset(destination=args.campus_dir).load()
+    campus_db_paths = sorted(glob(str(Path(args.campus_dir) / "day_images" / "*.jpg")))
+    campus_q_paths = sorted(glob(str(Path(args.campus_dir) / "night_images" / "*.jpg")))
 
     print("===== Compute raw image statistics")
     gp_db_stats = compute_image_stats(gp_db_images)
@@ -191,6 +225,48 @@ def main() -> None:
         run_output,
         stable_dir,
         "campus_night_montage.png",
+    )
+
+    gp_pair_indices = [20, 132]
+    save_fig(
+        make_pair_comparison(
+            gp_db_images,
+            gp_q_images,
+            gp_pair_indices,
+            gp_pair_indices,
+            "Day match",
+            "Night match",
+        ),
+        run_output,
+        stable_dir,
+        "gardenspoint_matched_pairs.png",
+    )
+
+    campus_day_index = {
+        Path(path).stem: idx for idx, path in enumerate(campus_db_paths)
+    }
+    campus_night_index = {}
+    for idx, path in enumerate(campus_q_paths):
+        stem = Path(path).stem
+        normalized = _normalize_campus_night_stem(stem)
+        if normalized and normalized not in campus_night_index:
+            campus_night_index[normalized] = idx
+
+    campus_pair_stems = ["image001", "image034"]
+    campus_db_pair_indices = [campus_day_index[stem] for stem in campus_pair_stems]
+    campus_q_pair_indices = [campus_night_index[stem] for stem in campus_pair_stems]
+    save_fig(
+        make_pair_comparison(
+            campus_db_images,
+            campus_q_images,
+            campus_db_pair_indices,
+            campus_q_pair_indices,
+            "Day match",
+            "Night match",
+        ),
+        run_output,
+        stable_dir,
+        "campus_matched_pairs.png",
     )
 
     summary_text = build_profile_summary(
